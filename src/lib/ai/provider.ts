@@ -3,8 +3,14 @@
  * Swap OpenRouter for another OpenAI-compatible API by editing this file.
  */
 
+import { audioFormatForMime } from "./audio-format";
+
 export const DEFAULT_TEXT_MODEL = "x-ai/grok-4.3";
 export const DEFAULT_VISION_MODEL = "google/gemini-2.5-flash";
+export const DEFAULT_AUDIO_MODEL = "google/gemini-2.5-flash";
+
+const TRANSCRIBE_INSTRUCTION =
+  "Transcribe this audio exactly. The speaker is a small business owner in Kampala, Uganda; may mix English, Luganda, Swahili. Return only the transcript text.";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -25,6 +31,10 @@ export function textModel(): string {
 
 export function visionModel(): string {
   return readEnv("OPENROUTER_VISION_MODEL") ?? DEFAULT_VISION_MODEL;
+}
+
+export function audioModel(): string {
+  return readEnv("OPENROUTER_AUDIO_MODEL") ?? DEFAULT_AUDIO_MODEL;
 }
 
 export class AiNotConfiguredError extends Error {
@@ -150,6 +160,51 @@ export async function completeChat(options: {
 
   const text = readContent(await response.json());
   if (!text.trim()) throw new AiRequestError("The model returned an empty response.");
+  return text;
+}
+
+/**
+ * Chat completions audio input, not the Responses API.
+ * OpenRouter documents `/api/v1/responses` input_audio as wav and mp3 only.
+ * Chat completions accepts the format string the model supports (webm, mp4, ogg, wav, mp3)
+ * as `{ type: "input_audio", input_audio: { data, format } }`.
+ * https://openrouter.ai/docs/features/multimodal/audio
+ */
+export async function transcribeAudio(audioBase64: string, mimeType: string): Promise<string> {
+  const key = readEnv("OPENROUTER_API_KEY");
+  if (!key) throw new AiNotConfiguredError();
+
+  const format = audioFormatForMime(mimeType);
+  if (!format) throw new AiRequestError("That audio format is not supported.");
+
+  const referer = readEnv("OPENROUTER_SITE_URL") ?? "http://localhost:38471";
+  const response = await postChat(
+    key,
+    referer,
+    {
+      model: audioModel(),
+      temperature: 0,
+      max_tokens: 2000,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: TRANSCRIBE_INSTRUCTION },
+            { type: "input_audio", input_audio: { data: audioBase64, format } },
+          ],
+        },
+      ],
+    },
+    55_000,
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new AiRequestError(providerMessage(response.status, body), response.status);
+  }
+
+  const text = readContent(await response.json()).trim();
+  if (!text) throw new AiRequestError("The model returned an empty transcript.");
   return text;
 }
 

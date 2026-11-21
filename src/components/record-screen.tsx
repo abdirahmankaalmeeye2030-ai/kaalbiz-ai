@@ -17,8 +17,50 @@ import { cn } from "@/lib/utils";
 const EXAMPLE =
   "Sold 3 bags of sugar to Mama Grace for 15k, she paid 10k cash and owes 5k";
 
+const VOICE_LIMIT_MS = 2 * 60 * 1000;
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+
 type Mode = "text" | "voice" | "receipt";
-type VoiceSupport = "unknown" | "yes" | "no";
+
+function formatVoiceClock(ms: number) {
+  const totalSeconds = Math.min(120, Math.max(0, Math.floor(ms / 1000)));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function pickRecorderMime(): string | undefined {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return undefined;
+  return RECORDER_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read that recording."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function microphoneError(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return "Microphone permission was denied. Type it instead.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError" || name === "OverconstrainedError") {
+    return "No microphone found. Type it instead.";
+  }
+  if (name === "SecurityError") {
+    return "Voice recording needs a secure connection (HTTPS). Type it instead.";
+  }
+  return "Could not use the microphone. Type it instead.";
+}
 
 function toDrafts(response: ExtractionResponse): DraftTransaction[] {
   return response.transactions.map((tx) => ({
@@ -56,18 +98,41 @@ export function RecordScreen() {
   const [result, setResult] = useState<ExtractionResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftTransaction[]>([]);
   const [saved, setSaved] = useState(0);
-  const [voiceSupport, setVoiceSupport] = useState<VoiceSupport>("unknown");
-  const [listening, setListening] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ base64: string } | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const transcriptRef = useRef("");
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const startedAtRef = useRef(0);
+  const sessionRef = useRef(0);
+  const discardRef = useRef(false);
+  const mountedRef = useRef(true);
+  const transcribingRef = useRef(false);
 
   useEffect(() => {
-    return () => recognitionRef.current?.abort();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      discardRef.current = true;
+      sessionRef.current += 1;
+      if (timerRef.current != null) window.clearInterval(timerRef.current);
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+        } catch {
+          // Already stopped.
+        }
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
   }, []);
 
   useEffect(() => {
@@ -103,65 +168,159 @@ export function RecordScreen() {
     }
   }
 
-  function startVoice() {
-    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Ctor) {
-      markVoiceUnsupported(setVoiceSupport, setVoiceMessage);
-      return;
-    }
-    recognitionRef.current?.abort();
-    const recognition = new Ctor();
-    recognitionRef.current = recognition;
-    recognition.lang = "en-UG";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    let triedEnglish = false;
-    transcriptRef.current = "";
-    setVoiceMessage(null);
-    setListening(true);
-    setError(null);
+  function releaseStream() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
 
-    recognition.onresult = (event) => {
-      let spoken = "";
-      for (let index = 0; index < event.results.length; index += 1) {
-        spoken += event.results[index][0].transcript;
-      }
-      transcriptRef.current = spoken.trim();
-      setText(spoken.trim());
-    };
-    recognition.onerror = (event) => {
-      if (event.error === "language-not-supported" && !triedEnglish) {
-        triedEnglish = true;
-        recognition.lang = "en-US";
-        try {
-          recognition.start();
-          return;
-        } catch {
-          setVoiceMessage("Not supported in this browser");
-        }
-      } else if (event.error === "not-allowed") {
-        setVoiceMessage("Microphone permission was blocked.");
-      } else if (event.error !== "aborted" && event.error !== "no-speech") {
-        setVoiceMessage("Could not hear that. Try again, or type it instead.");
-      }
-      setListening(false);
-    };
-    recognition.onend = () => {
-      setListening(false);
-      const spoken = transcriptRef.current.trim();
-      if (spoken) void readText(spoken);
-    };
-    try {
-      recognition.start();
-    } catch {
-      setListening(false);
-      setVoiceMessage("Not supported in this browser");
+  function clearVoiceTimer() {
+    if (timerRef.current != null) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
     }
   }
 
-  function stopVoice() {
-    recognitionRef.current?.stop();
-    setListening(false);
+  function stopRecording() {
+    clearVoiceTimer();
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+        return;
+      } catch {
+        // Fall through and release the mic ourselves.
+      }
+    }
+    releaseStream();
+    if (mountedRef.current) setRecording(false);
+  }
+
+  async function sendRecording(blob: Blob, mimeType: string) {
+    if (blob.size < 1) {
+      setVoiceMessage("No audio was recorded. Type it instead.");
+      return;
+    }
+    if (blob.size > MAX_AUDIO_BYTES) {
+      setVoiceMessage("That recording is too long to send. Try a shorter one, or type it instead.");
+      return;
+    }
+    transcribingRef.current = true;
+    setTranscribing(true);
+    setVoiceMessage(null);
+    try {
+      const audioBase64 = await blobToBase64(blob);
+      const response = await postJson<{ transcript: string }>("/api/transcribe", { audioBase64, mimeType });
+      const transcript = response.transcript?.trim() ?? "";
+      if (!transcript) {
+        setVoiceMessage("Transcription failed. Type it instead.");
+        return;
+      }
+      setText(transcript);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (
+        message.includes("OPENROUTER_API_KEY") ||
+        message.includes("Type it instead") ||
+        message.includes("too long")
+      ) {
+        setVoiceMessage(message);
+      } else {
+        setVoiceMessage("Transcription failed. Type it instead.");
+      }
+    } finally {
+      transcribingRef.current = false;
+      if (mountedRef.current) setTranscribing(false);
+    }
+  }
+
+  async function startRecording() {
+    if (recording || transcribing || transcribingRef.current) return;
+    setVoiceMessage(null);
+    setError(null);
+    if (!window.isSecureContext) {
+      setVoiceMessage("Voice recording needs a secure connection (HTTPS). Type it instead.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceMessage("This browser cannot record audio. Type it instead.");
+      return;
+    }
+
+    const session = sessionRef.current + 1;
+    sessionRef.current = session;
+    discardRef.current = false;
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      setVoiceMessage(microphoneError(err));
+      return;
+    }
+    if (!mountedRef.current || sessionRef.current !== session) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    const mimeType = pickRecorderMime();
+    let recorder: MediaRecorder;
+    try {
+      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch {
+      stream.getTracks().forEach((track) => track.stop());
+      setVoiceMessage("This browser cannot record audio. Type it instead.");
+      return;
+    }
+
+    streamRef.current = stream;
+    recorderRef.current = recorder;
+    chunksRef.current = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      const type = recorder.mimeType || mimeType || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type });
+      chunksRef.current = [];
+      releaseStream();
+      clearVoiceTimer();
+      recorderRef.current = null;
+      if (mountedRef.current) setRecording(false);
+      if (discardRef.current || !mountedRef.current) return;
+      void sendRecording(blob, type);
+    };
+
+    try {
+      recorder.start();
+    } catch {
+      releaseStream();
+      recorderRef.current = null;
+      setVoiceMessage("This browser cannot record audio. Type it instead.");
+      return;
+    }
+
+    startedAtRef.current = Date.now();
+    setElapsedMs(0);
+    setRecording(true);
+    timerRef.current = window.setInterval(() => {
+      if (sessionRef.current !== session) return;
+      const elapsed = Date.now() - startedAtRef.current;
+      if (elapsed >= VOICE_LIMIT_MS) {
+        setElapsedMs(VOICE_LIMIT_MS);
+        stopRecording();
+        return;
+      }
+      setElapsedMs(elapsed);
+    }, 250);
+  }
+
+  function selectMode(next: Mode) {
+    if (next !== "voice") {
+      sessionRef.current += 1;
+      discardRef.current = true;
+      stopRecording();
+    }
+    setMode(next);
   }
 
   async function onPhoto(file: File | undefined) {
@@ -232,20 +391,9 @@ export function RecordScreen() {
       </div>
 
       <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="How to tell KaalBiz">
-        <ModeButton current={mode} mode="text" label="Text" icon={<PenLine className="h-4 w-4" />} onSelect={setMode} />
-        <ModeButton
-          current={mode}
-          mode="voice"
-          label="Voice"
-          icon={<Mic className="h-4 w-4" />}
-          onSelect={(next) => {
-            setMode(next);
-            if (next === "voice" && !window.SpeechRecognition && !window.webkitSpeechRecognition) {
-              markVoiceUnsupported(setVoiceSupport, setVoiceMessage);
-            }
-          }}
-        />
-        <ModeButton current={mode} mode="receipt" label="Receipt" icon={<Camera className="h-4 w-4" />} onSelect={setMode} />
+        <ModeButton current={mode} mode="text" label="Text" icon={<PenLine className="h-4 w-4" />} onSelect={selectMode} />
+        <ModeButton current={mode} mode="voice" label="Voice" icon={<Mic className="h-4 w-4" />} onSelect={selectMode} />
+        <ModeButton current={mode} mode="receipt" label="Receipt" icon={<Camera className="h-4 w-4" />} onSelect={selectMode} />
       </div>
 
       {mode !== "receipt" ? (
@@ -266,25 +414,40 @@ export function RecordScreen() {
             </button>
           ) : (
             <div className="space-y-2">
-              <Button
-                type="button"
-                variant={listening ? "secondary" : "outline"}
-                className="w-full"
-                onClick={listening ? stopVoice : startVoice}
-                disabled={voiceSupport === "no"}
+              <p
+                className="text-center text-2xl font-semibold tabular-nums tracking-tight"
+                aria-live="polite"
+                aria-atomic="true"
               >
-                <Mic className="h-4 w-4" />
-                {listening ? "Listening… tap to stop" : "Tap to speak"}
-              </Button>
+                <span className="sr-only">Recording time </span>
+                {formatVoiceClock(elapsedMs)} / 2:00
+              </p>
+              {recording ? (
+                <Button type="button" variant="destructive" className="h-14 w-full text-base" size="lg" onClick={stopRecording}>
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-14 w-full text-base"
+                  size="lg"
+                  onClick={() => void startRecording()}
+                  disabled={transcribing}
+                >
+                  <Mic className="h-5 w-5" />
+                  {transcribing ? "Transcribing…" : "Tap to speak"}
+                </Button>
+              )}
               <p className="text-sm text-muted-foreground" role="status">
-                {voiceSupport === "no"
-                  ? "Not supported in this browser"
-                  : voiceMessage ||
-                    "Speak in English. The words fill the box, then KaalBiz reads them."}
+                {voiceMessage ||
+                  (transcribing
+                    ? "Transcribing…"
+                    : "Record up to 2 minutes. Review the words in the box, then tap Read this.")}
               </p>
             </div>
           )}
-          <Button type="button" className="w-full" size="lg" disabled={busy} onClick={() => void readText(text)}>
+          <Button type="button" className="w-full" size="lg" disabled={busy || transcribing} onClick={() => void readText(text)}>
             {busy ? "Reading…" : "Read this"}
           </Button>
         </div>
@@ -386,14 +549,6 @@ export function RecordScreen() {
       ) : null}
     </div>
   );
-}
-
-function markVoiceUnsupported(
-  setVoiceSupport: (value: VoiceSupport) => void,
-  setVoiceMessage: (value: string) => void,
-) {
-  setVoiceSupport("no");
-  setVoiceMessage("Not supported in this browser");
 }
 
 function ModeButton({
