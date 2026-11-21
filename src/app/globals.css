@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f1e7;
+  --foreground: #1c1915;
+  --card: #fffdf8;
+  --card-foreground: #1c1915;
+  --primary: #0e6b4c;
+  --primary-foreground: #f4fff9;
+  --secondary: #efe6d6;
+  --secondary-foreground: #1c1915;
+  --muted: #f3ecdf;
+  --muted-foreground: #5e584e;
+  --accent: #efe6d6;
+  --accent-foreground: #1c1915;
+  --destructive: #8d2f2f;
+  --destructive-foreground: #fff7f7;
+  --border: #e4dccb;
+  --input: #e4dccb;
+  --ring: #0e6b4c;
+  --warning: #8a5a00;
+  --warning-bg: #fff4d8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --font-sans: var(--font-source);
+  --font-serif: var(--font-fraunces);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-source), "Source Sans 3", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
