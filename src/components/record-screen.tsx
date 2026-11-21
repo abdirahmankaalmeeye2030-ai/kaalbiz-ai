@@ -17,26 +17,8 @@ import { cn } from "@/lib/utils";
 const EXAMPLE =
   "Sold 3 bags of sugar to Mama Grace for 15k, she paid 10k cash and owes 5k";
 
-const VOICE_LIMIT_MS = 2 * 60 * 1000;
-
 type Mode = "text" | "voice" | "receipt";
 type VoiceSupport = "unknown" | "yes" | "no";
-
-function formatVoiceClock(ms: number) {
-  const totalSeconds = Math.min(120, Math.max(0, Math.floor(ms / 1000)));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function joinSpeech(parts: string[]) {
-  return parts
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function toDrafts(response: ExtractionResponse): DraftTransaction[] {
   return response.transactions.map((tx) => ({
@@ -79,29 +61,13 @@ export function RecordScreen() {
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ base64: string } | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const transcriptRef = useRef("");
-  const accumulatedRef = useRef("");
-  const sessionFinalRef = useRef("");
-  const sessionInterimRef = useRef("");
-  const sessionIdRef = useRef(0);
-  const voiceStopRef = useRef(false);
-  const voiceFatalRef = useRef(false);
-  const voiceStartedAtRef = useRef(0);
-  const timerRef = useRef<number | null>(null);
-  const restartTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    return () => {
-      voiceStopRef.current = true;
-      sessionIdRef.current += 1;
-      if (timerRef.current != null) window.clearInterval(timerRef.current);
-      if (restartTimerRef.current != null) window.clearTimeout(restartTimerRef.current);
-      recognitionRef.current?.abort();
-    };
+    return () => recognitionRef.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -137,175 +103,65 @@ export function RecordScreen() {
     }
   }
 
-  function clearVoiceTimers() {
-    if (timerRef.current != null) {
-      window.clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (restartTimerRef.current != null) {
-      window.clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
-  }
-
-  function commitVoiceSession() {
-    const spoken = joinSpeech([
-      accumulatedRef.current,
-      sessionFinalRef.current,
-      sessionInterimRef.current,
-    ]);
-    accumulatedRef.current = spoken;
-    sessionFinalRef.current = "";
-    sessionInterimRef.current = "";
-    if (!spoken) return;
-    transcriptRef.current = spoken;
-    setText(spoken);
-  }
-
-  function stopVoice() {
-    voiceStopRef.current = true;
-    clearVoiceTimers();
-    const recognition = recognitionRef.current;
-    if (recognition) {
-      try {
-        recognition.stop();
-      } catch {
-        try {
-          recognition.abort();
-        } catch {
-          // Already stopped.
-        }
-      }
-    }
-    setListening(false);
-  }
-
   function startVoice() {
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Ctor) {
       markVoiceUnsupported(setVoiceSupport, setVoiceMessage);
       return;
     }
-    const session = sessionIdRef.current + 1;
-    sessionIdRef.current = session;
-    voiceStopRef.current = true;
-    clearVoiceTimers();
     recognitionRef.current?.abort();
-
     const recognition = new Ctor();
     recognitionRef.current = recognition;
     recognition.lang = "en-UG";
     recognition.interimResults = true;
-    recognition.continuous = true;
+    recognition.continuous = false;
     let triedEnglish = false;
-    accumulatedRef.current = "";
-    sessionFinalRef.current = "";
-    sessionInterimRef.current = "";
     transcriptRef.current = "";
-    voiceStopRef.current = false;
-    voiceFatalRef.current = false;
-    voiceStartedAtRef.current = Date.now();
-    setElapsedMs(0);
     setVoiceMessage(null);
     setListening(true);
     setError(null);
 
-    const publishTranscript = () => {
-      const spoken = joinSpeech([
-        accumulatedRef.current,
-        sessionFinalRef.current,
-        sessionInterimRef.current,
-      ]);
-      if (!spoken) return;
-      transcriptRef.current = spoken;
-      setText(spoken);
-    };
-
-    const scheduleRestart = () => {
-      if (restartTimerRef.current != null) return;
-      restartTimerRef.current = window.setTimeout(() => {
-        restartTimerRef.current = null;
-        if (sessionIdRef.current !== session) return;
-        if (voiceStopRef.current || voiceFatalRef.current) return;
-        if (Date.now() - voiceStartedAtRef.current >= VOICE_LIMIT_MS) {
-          setElapsedMs(VOICE_LIMIT_MS);
-          stopVoice();
-          return;
-        }
-        try {
-          recognition.start();
-        } catch {
-          // The browser was still closing the previous session.
-        }
-      }, 250);
-    };
-
     recognition.onresult = (event) => {
-      if (sessionIdRef.current !== session) return;
-      let finals = "";
-      let interim = "";
+      let spoken = "";
       for (let index = 0; index < event.results.length; index += 1) {
-        const piece = event.results[index][0]?.transcript ?? "";
-        if (event.results[index].isFinal) finals += piece;
-        else interim += piece;
+        spoken += event.results[index][0].transcript;
       }
-      sessionFinalRef.current = finals.trim();
-      sessionInterimRef.current = interim.trim();
-      publishTranscript();
+      transcriptRef.current = spoken.trim();
+      setText(spoken.trim());
     };
     recognition.onerror = (event) => {
-      if (sessionIdRef.current !== session) return;
-      if (event.error === "no-speech") {
-        scheduleRestart();
-        return;
-      }
-      if (event.error === "aborted") return;
       if (event.error === "language-not-supported" && !triedEnglish) {
         triedEnglish = true;
         recognition.lang = "en-US";
-        return;
-      }
-      voiceFatalRef.current = true;
-      if (event.error === "not-allowed") {
+        try {
+          recognition.start();
+          return;
+        } catch {
+          setVoiceMessage("Not supported in this browser");
+        }
+      } else if (event.error === "not-allowed") {
         setVoiceMessage("Microphone permission was blocked.");
-      } else if (event.error === "language-not-supported") {
-        setVoiceMessage("Not supported in this browser");
-      } else {
+      } else if (event.error !== "aborted" && event.error !== "no-speech") {
         setVoiceMessage("Could not hear that. Try again, or type it instead.");
       }
-    };
-    recognition.onend = () => {
-      if (sessionIdRef.current !== session) return;
-      commitVoiceSession();
-      const elapsed = Date.now() - voiceStartedAtRef.current;
-      const keepGoing = !voiceStopRef.current && !voiceFatalRef.current && elapsed < VOICE_LIMIT_MS;
-      if (keepGoing) {
-        scheduleRestart();
-        return;
-      }
-      clearVoiceTimers();
       setListening(false);
     };
-
-    timerRef.current = window.setInterval(() => {
-      if (sessionIdRef.current !== session || voiceStopRef.current) return;
-      const elapsed = Date.now() - voiceStartedAtRef.current;
-      if (elapsed >= VOICE_LIMIT_MS) {
-        setElapsedMs(VOICE_LIMIT_MS);
-        stopVoice();
-        return;
-      }
-      setElapsedMs(elapsed);
-    }, 250);
-
+    recognition.onend = () => {
+      setListening(false);
+      const spoken = transcriptRef.current.trim();
+      if (spoken) void readText(spoken);
+    };
     try {
       recognition.start();
     } catch {
-      voiceStopRef.current = true;
-      clearVoiceTimers();
       setListening(false);
       setVoiceMessage("Not supported in this browser");
     }
+  }
+
+  function stopVoice() {
+    recognitionRef.current?.stop();
+    setListening(false);
   }
 
   async function onPhoto(file: File | undefined) {
@@ -322,6 +178,12 @@ export function RecordScreen() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that photo.");
     }
+  }
+
+  function onFileChosen(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    void onPhoto(file);
   }
 
   async function readReceipt() {
@@ -349,20 +211,6 @@ export function RecordScreen() {
     }
   }
 
-  function onFileChosen(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    void onPhoto(file);
-  }
-
-  function selectMode(next: Mode) {
-    if (next !== mode && next !== "voice") stopVoice();
-    setMode(next);
-    if (next === "voice" && !window.SpeechRecognition && !window.webkitSpeechRecognition) {
-      markVoiceUnsupported(setVoiceSupport, setVoiceMessage);
-    }
-  }
-
   function confirm(ids: string[]) {
     const chosen = drafts.filter(
       (draft) => ids.includes(draft.draftId) && draft.amount > 0 && draft.description.trim(),
@@ -384,9 +232,20 @@ export function RecordScreen() {
       </div>
 
       <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="How to tell KaalBiz">
-        <ModeButton current={mode} mode="text" label="Text" icon={<PenLine className="h-4 w-4" />} onSelect={selectMode} />
-        <ModeButton current={mode} mode="voice" label="Voice" icon={<Mic className="h-4 w-4" />} onSelect={selectMode} />
-        <ModeButton current={mode} mode="receipt" label="Receipt" icon={<Camera className="h-4 w-4" />} onSelect={selectMode} />
+        <ModeButton current={mode} mode="text" label="Text" icon={<PenLine className="h-4 w-4" />} onSelect={setMode} />
+        <ModeButton
+          current={mode}
+          mode="voice"
+          label="Voice"
+          icon={<Mic className="h-4 w-4" />}
+          onSelect={(next) => {
+            setMode(next);
+            if (next === "voice" && !window.SpeechRecognition && !window.webkitSpeechRecognition) {
+              markVoiceUnsupported(setVoiceSupport, setVoiceMessage);
+            }
+          }}
+        />
+        <ModeButton current={mode} mode="receipt" label="Receipt" icon={<Camera className="h-4 w-4" />} onSelect={setMode} />
       </div>
 
       {mode !== "receipt" ? (
@@ -407,31 +266,16 @@ export function RecordScreen() {
             </button>
           ) : (
             <div className="space-y-2">
-              <p
-                className="text-center text-2xl font-semibold tabular-nums tracking-tight"
-                aria-live="polite"
-                aria-atomic="true"
+              <Button
+                type="button"
+                variant={listening ? "secondary" : "outline"}
+                className="w-full"
+                onClick={listening ? stopVoice : startVoice}
+                disabled={voiceSupport === "no"}
               >
-                <span className="sr-only">Recording time </span>
-                {formatVoiceClock(elapsedMs)} / 2:00
-              </p>
-              {listening ? (
-                <Button type="button" variant="destructive" className="h-14 w-full text-base" size="lg" onClick={stopVoice}>
-                  Stop
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-14 w-full text-base"
-                  size="lg"
-                  onClick={startVoice}
-                  disabled={voiceSupport === "no"}
-                >
-                  <Mic className="h-5 w-5" />
-                  Tap to speak
-                </Button>
-              )}
+                <Mic className="h-4 w-4" />
+                {listening ? "Listening… tap to stop" : "Tap to speak"}
+              </Button>
               <p className="text-sm text-muted-foreground" role="status">
                 {voiceSupport === "no"
                   ? "Not supported in this browser"
