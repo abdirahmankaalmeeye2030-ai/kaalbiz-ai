@@ -1,9 +1,28 @@
+const HEIC_MESSAGE =
+  "This photo is HEIC, which this browser can't read. Export it as a JPEG, or take the photo again.";
+
+function isHeicFile(file: File) {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return type.includes("heic") || type.includes("heif") || name.endsWith(".heic") || name.endsWith(".heif");
+}
+
 export async function compressImage(
   file: File,
 ): Promise<{ base64: string; mimeType: "image/jpeg"; previewUrl: string }> {
-  const source = await decodeImage(file);
+  let source: ImageBitmap | HTMLImageElement;
+  try {
+    source = await decodeImage(file);
+  } catch (error) {
+    if (isHeicFile(file)) throw new Error(HEIC_MESSAGE);
+    throw error;
+  }
   const width = source instanceof HTMLImageElement ? source.naturalWidth : source.width;
   const height = source instanceof HTMLImageElement ? source.naturalHeight : source.height;
+  if (!width || !height) {
+    if ("close" in source && typeof source.close === "function") source.close();
+    throw new Error(isHeicFile(file) ? HEIC_MESSAGE : "Could not read that image.");
+  }
   const maxEdge = 1280;
   const scale = Math.min(1, maxEdge / Math.max(width, height, 1));
   const canvas = document.createElement("canvas");
