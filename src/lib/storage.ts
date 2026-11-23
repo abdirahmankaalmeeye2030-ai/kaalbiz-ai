@@ -42,6 +42,8 @@ export function parseLedger(raw: string | null): LedgerEntry[] {
       dueDate: typeof entry.dueDate === "string" && entry.dueDate.trim() ? entry.dueDate.trim() : null,
       agreedAmount:
         typeof entry.agreedAmount === "number" && entry.agreedAmount > 0 ? Math.round(entry.agreedAmount) : null,
+      updatedAt: typeof entry.updatedAt === "string" && entry.updatedAt.trim() ? entry.updatedAt : entry.createdAt,
+      deletedAt: typeof entry.deletedAt === "string" && entry.deletedAt.trim() ? entry.deletedAt : null,
     }));
   } catch {
     return [];

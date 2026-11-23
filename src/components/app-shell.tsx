@@ -4,6 +4,8 @@ import { BookOpen, CalendarDays, LayoutDashboard, Moon, PenLine, Sun, Users } fr
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { AccountMenu } from "@/components/account-menu";
+import { CloudBridge } from "@/components/cloud-bridge";
 import type { HealthStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +57,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem key={link.href} link={link} pathname={pathname} layout="side" />
             ))}
           </ul>
+          <div className="mt-auto pt-6">
+            <AccountMenu layout="side" />
+          </div>
         </aside>
         <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
@@ -62,6 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Brand />
             </div>
             <div className="ml-auto flex items-center gap-2">
+              <AccountMenu />
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -80,6 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ))}
             </ul>
           </nav>
+          <CloudBridge />
           <main className="flex-1 px-4 pb-28 pt-5 md:pb-10 lg:px-8 lg:pt-8">
             <div className={cn("mx-auto w-full", wide ? "max-w-6xl" : "max-w-lg md:max-w-3xl")}>{children}</div>
           </main>

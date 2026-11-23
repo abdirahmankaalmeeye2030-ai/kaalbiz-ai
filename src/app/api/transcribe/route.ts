@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { guardAiRequest } from "@/lib/auth-guard";
 import { audioFormatForMime } from "@/lib/ai/audio-format";
 import { AiNotConfiguredError, isAiConfigured, transcribeAudio } from "@/lib/ai/provider";
 
@@ -22,6 +23,8 @@ function decodedAudioBytes(base64: string): number {
 }
 
 export async function POST(request: Request) {
+  const denied = await guardAiRequest();
+  if (denied) return denied;
   let json: unknown;
   try {
     json = await request.json();

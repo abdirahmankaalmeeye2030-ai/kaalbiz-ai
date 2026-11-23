@@ -55,6 +55,8 @@ export interface LedgerEntry {
   source: "ai" | "demo" | "sample";
   isSample: boolean;
   createdAt: string;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
 }
 
 export interface ExtractionResponse {

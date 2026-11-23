@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { guardAiRequest } from "@/lib/auth-guard";
 import { extractReceipt } from "@/lib/ai/extract";
 import { isIsoDate } from "@/lib/dates";
 
@@ -13,6 +14,8 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const denied = await guardAiRequest();
+  if (denied) return denied;
   let json: unknown;
   try {
     json = await request.json();

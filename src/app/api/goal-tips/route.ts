@@ -1,3 +1,4 @@
+import { guardAiRequest } from "@/lib/auth-guard";
 import { goalTipsPrompt, goalTipsRequestSchema, parseGoalTips, ruleBasedGoalTips } from "@/lib/goal-tips";
 import { AiNotConfiguredError, completeChat, isAiConfigured, safeErrorMessage, textModel } from "@/lib/ai/provider";
 import { isIsoDate } from "@/lib/dates";
@@ -7,6 +8,8 @@ export const maxDuration = 60;
 const DEMO_BADGE = "Demo mode: rule-based tips, not real AI";
 
 export async function POST(request: Request) {
+  const denied = await guardAiRequest();
+  if (denied) return denied;
   let json: unknown;
   try {
     json = await request.json();
