@@ -4,13 +4,11 @@
  */
 
 import { audioFormatForMime } from "./audio-format";
+import { transcriptionInstruction, type VoiceLanguage } from "./voice-transcript";
 
 export const DEFAULT_TEXT_MODEL = "x-ai/grok-4.3";
 export const DEFAULT_VISION_MODEL = "google/gemini-2.5-flash";
 export const DEFAULT_AUDIO_MODEL = "google/gemini-2.5-flash";
-
-const TRANSCRIBE_INSTRUCTION =
-  "Transcribe this audio exactly. The speaker is a small business owner in Kampala, Uganda; may mix English, Luganda, Swahili. Return only the transcript text.";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -170,7 +168,11 @@ export async function completeChat(options: {
  * as `{ type: "input_audio", input_audio: { data, format } }`.
  * https://openrouter.ai/docs/features/multimodal/audio
  */
-export async function transcribeAudio(audioBase64: string, mimeType: string): Promise<string> {
+export async function transcribeAudio(
+  audioBase64: string,
+  mimeType: string,
+  language: VoiceLanguage = "en",
+): Promise<string> {
   const key = readEnv("OPENROUTER_API_KEY");
   if (!key) throw new AiNotConfiguredError();
 
@@ -178,25 +180,31 @@ export async function transcribeAudio(audioBase64: string, mimeType: string): Pr
   if (!format) throw new AiRequestError("That audio format is not supported.");
 
   const referer = readEnv("OPENROUTER_SITE_URL") ?? "http://localhost:38471";
-  const response = await postChat(
+  const payload = {
+    model: audioModel(),
+    temperature: 0,
+    max_tokens: 2000,
+    messages: [
+      {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: transcriptionInstruction(language) },
+          { type: "input_audio" as const, input_audio: { data: audioBase64, format } },
+        ],
+      },
+    ],
+  };
+  // English stays plain text. Luganda and Somali ask for JSON, then retry without
+  // response_format if the model rejects that flag.
+  let response = await postChat(
     key,
     referer,
-    {
-      model: audioModel(),
-      temperature: 0,
-      max_tokens: 2000,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: TRANSCRIBE_INSTRUCTION },
-            { type: "input_audio", input_audio: { data: audioBase64, format } },
-          ],
-        },
-      ],
-    },
+    language === "en" ? payload : { ...payload, response_format: { type: "json_object" } },
     55_000,
   );
+  if (language !== "en" && response.status === 400) {
+    response = await postChat(key, referer, payload, 55_000);
+  }
 
   if (!response.ok) {
     const body = await response.text();

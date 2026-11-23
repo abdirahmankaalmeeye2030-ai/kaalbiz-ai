@@ -46,7 +46,7 @@ The provider call lives in `src/lib/ai/provider.ts`. Change that file to point a
 
 ## What the screens do
 
-1. **Record** — Text, voice, or a receipt photo. Voice records with the microphone for up to 2 minutes, sends the audio to `/api/transcribe`, and puts the transcript in the box for review. Nothing is saved until you tap Read this, then Confirm. Receipts are resized in the browser before upload. Take photo opens the camera. Upload from gallery / files opens the gallery or file picker.
+1. **Record** — Text, voice, or a receipt photo. Voice records with the microphone for up to 2 minutes. Choose English, Luganda, or Somali (the choice is remembered on this phone). Luganda and Somali come back as the words you said, plus English in the box. You still tap Read this, then Confirm. Nothing is saved before that. Receipts are resized in the browser before upload. Take photo opens the camera. Upload from gallery / files opens the gallery or file picker.
 2. **Confirm** — Each extracted record is an editable card. Low-confidence cards are highlighted. Nothing is saved until you tap Confirm.
 3. **Ledger** — Confirmed records, with filters and delete confirmation.
 4. **Today** — Sales, money spent, money in, money out, cash left, what customers owe, a 7-day chart, and recent records. The math is in `src/lib/calculations.ts`. The model never calculates totals.
@@ -68,7 +68,7 @@ The provider call lives in `src/lib/ai/provider.ts`. Change that file to point a
 3. Show the badge: `AI extracted · …` or `Demo mode: rule-based parser, not real AI`. Show the two cards (cash and still owed) and the “Please check this one” highlight. Edit if you want, then **Confirm all**.
 4. Open **Today**. Sales, money spent, cash left, and the 7-day chart should include the new records.
 5. Open **Daily note**. The figures are already there. The paragraph underneath is either written by the model or marked as a template.
-6. Open **Voice**. Tap to speak, then **Stop** (or wait for 2:00). The transcript fills the box. Edit it if you need to, then **Read this**. Nothing is saved until you confirm. Without `OPENROUTER_API_KEY`, the screen says transcription needs that key and does not invent words.
+6. Open **Voice**. Pick English, Luganda, or Somali. Tap to speak, then **Stop** (or wait for 2:00). English fills the box. For Luganda or Somali, the words you said stay above the box so you can check them. Edit the English if you need to, then **Read this**. Nothing is saved until you confirm. Without `OPENROUTER_API_KEY`, the screen says transcription needs that key and does not invent words.
 7. Open **Receipt**, upload any photo. Without a key, KaalBiz says the photo was not read and offers a labelled sample card. Do not confirm it unless you want the sample in the ledger.
 8. Tap **Load demo data** for a week of Kampala sample records (marked Sample), then **Clear all data** when you are done.
 
@@ -78,6 +78,6 @@ The provider call lives in `src/lib/ai/provider.ts`. Change that file to point a
 - The demo parser is a keyword and amount guess. It is labelled and should be checked. It will miss messy sentences.
 - Customer debt is matched by the name as written. “Mama Grace” and “Grace” are different people.
 - “Cash left” is money in minus money out. It is not profit, tax, or a balance sheet. Stock you bought counts as money spent.
-- Voice needs a microphone and HTTPS (localhost counts). It records audio in the browser and transcribes it with OpenRouter. Without `OPENROUTER_API_KEY` there is no transcript. Receipt reading does nothing useful without an AI key.
+- Voice needs a microphone and HTTPS (localhost counts). It records audio in the browser and transcribes it with OpenRouter. English, Luganda, and Somali are supported. Luganda and Somali are translated to English for the ledger, and amounts are asked for as digits in Uganda shillings. Without `OPENROUTER_API_KEY` there is no transcript. Receipt reading does nothing useful without an AI key.
 - Amounts are treated as UGX. The app does not convert currency.
 - A failed model call falls back to the labelled parser for text, or an empty receipt result. It does not pretend the model succeeded.

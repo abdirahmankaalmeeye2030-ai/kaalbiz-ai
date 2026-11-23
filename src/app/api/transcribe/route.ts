@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { audioFormatForMime } from "@/lib/ai/audio-format";
 import { AiNotConfiguredError, isAiConfigured, transcribeAudio } from "@/lib/ai/provider";
+import { parseVoiceTranscript, TranscriptParseError, voiceLanguageSchema } from "@/lib/ai/voice-transcript";
 
 export const maxDuration = 60;
 
@@ -11,6 +12,7 @@ const MAX_BASE64_CHARS = Math.ceil(MAX_AUDIO_BYTES / 3) * 4 + 256;
 const bodySchema = z.object({
   audioBase64: z.string().min(1).max(MAX_BASE64_CHARS),
   mimeType: z.string().trim().min(1).max(120),
+  language: voiceLanguageSchema.optional(),
 });
 
 function decodedAudioBytes(base64: string): number {
@@ -56,15 +58,25 @@ export async function POST(request: Request) {
     return Response.json({ message: "Transcription needs OPENROUTER_API_KEY." }, { status: 503 });
   }
 
+  const language = parsed.data.language ?? "en";
+
   try {
-    const transcript = await transcribeAudio(audioBase64, parsed.data.mimeType);
-    return Response.json({ transcript });
+    const raw = await transcribeAudio(audioBase64, parsed.data.mimeType, language);
+    const transcript = parseVoiceTranscript(language, raw);
+    return Response.json({
+      transcript: transcript.english,
+      original: transcript.original,
+      language: transcript.language,
+    });
   } catch (error) {
     if (error instanceof AiNotConfiguredError) {
       return Response.json({ message: "Transcription needs OPENROUTER_API_KEY." }, { status: 503 });
     }
     if (error instanceof Error && error.name === "TimeoutError") {
       return Response.json({ message: "Transcription took too long. Type it instead." }, { status: 504 });
+    }
+    if (error instanceof TranscriptParseError) {
+      return Response.json({ message: "Transcription failed. Type it instead." }, { status: 502 });
     }
     return Response.json({ message: "Transcription failed. Type it instead." }, { status: 502 });
   }

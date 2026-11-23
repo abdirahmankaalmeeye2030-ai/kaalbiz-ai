@@ -2,7 +2,7 @@
 
 import { Camera, Mic, PenLine, Upload } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
 import { DraftCard } from "@/components/draft-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,44 @@ const EXAMPLE =
 const VOICE_LIMIT_MS = 2 * 60 * 1000;
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+const VOICE_LANGUAGE_KEY = "kaalbiz.voiceLanguage.v1";
+const VOICE_LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "lg", label: "Luganda" },
+  { code: "so", label: "Somali" },
+] as const;
 
 type Mode = "text" | "voice" | "receipt";
+type VoiceLanguage = (typeof VOICE_LANGUAGES)[number]["code"];
+
+function isVoiceLanguage(value: string | null): value is VoiceLanguage {
+  return value === "en" || value === "lg" || value === "so";
+}
+
+const VOICE_LANGUAGE_EVENT = "kaalbiz-voice-language";
+
+function readVoiceLanguage(): VoiceLanguage {
+  try {
+    const stored = window.localStorage.getItem(VOICE_LANGUAGE_KEY);
+    return isVoiceLanguage(stored) ? stored : "en";
+  } catch {
+    return "en";
+  }
+}
+
+function subscribeVoiceLanguage(onChange: () => void) {
+  window.addEventListener(VOICE_LANGUAGE_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(VOICE_LANGUAGE_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function rememberVoiceLanguage(next: VoiceLanguage) {
+  window.localStorage.setItem(VOICE_LANGUAGE_KEY, next);
+  window.dispatchEvent(new Event(VOICE_LANGUAGE_EVENT));
+}
 
 function formatVoiceClock(ms: number) {
   const totalSeconds = Math.min(120, Math.max(0, Math.floor(ms / 1000)));
@@ -102,6 +138,8 @@ export function RecordScreen() {
   const [transcribing, setTranscribing] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null);
+  const [spoken, setSpoken] = useState<{ language: "lg" | "so"; text: string } | null>(null);
+  const voiceLanguage = useSyncExternalStore(subscribeVoiceLanguage, readVoiceLanguage, () => "en" as const);
   const [preview, setPreview] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ base64: string } | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -115,6 +153,7 @@ export function RecordScreen() {
   const discardRef = useRef(false);
   const mountedRef = useRef(true);
   const transcribingRef = useRef(false);
+  const recordingLanguageRef = useRef<VoiceLanguage>("en");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -195,7 +234,12 @@ export function RecordScreen() {
     if (mountedRef.current) setRecording(false);
   }
 
-  async function sendRecording(blob: Blob, mimeType: string) {
+  function chooseLanguage(next: VoiceLanguage) {
+    rememberVoiceLanguage(next);
+    setSpoken(null);
+  }
+
+  async function sendRecording(blob: Blob, mimeType: string, language: VoiceLanguage) {
     if (blob.size < 1) {
       setVoiceMessage("No audio was recorded. Type it instead.");
       return;
@@ -209,13 +253,22 @@ export function RecordScreen() {
     setVoiceMessage(null);
     try {
       const audioBase64 = await blobToBase64(blob);
-      const response = await postJson<{ transcript: string }>("/api/transcribe", { audioBase64, mimeType });
+      const response = await postJson<{ transcript: string; original?: string; language?: VoiceLanguage }>(
+        "/api/transcribe",
+        { audioBase64, mimeType, language },
+      );
       const transcript = response.transcript?.trim() ?? "";
       if (!transcript) {
         setVoiceMessage("Transcription failed. Type it instead.");
         return;
       }
       setText(transcript);
+      const original = response.original?.trim() ?? "";
+      if ((language === "lg" || language === "so") && original) {
+        setSpoken({ language, text: original });
+      } else {
+        setSpoken(null);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       if (
@@ -249,6 +302,8 @@ export function RecordScreen() {
     const session = sessionRef.current + 1;
     sessionRef.current = session;
     discardRef.current = false;
+    recordingLanguageRef.current = voiceLanguage;
+    setSpoken(null);
 
     let stream: MediaStream;
     try {
@@ -287,7 +342,7 @@ export function RecordScreen() {
       recorderRef.current = null;
       if (mountedRef.current) setRecording(false);
       if (discardRef.current || !mountedRef.current) return;
-      void sendRecording(blob, type);
+      void sendRecording(blob, type, recordingLanguageRef.current);
     };
 
     try {
@@ -398,11 +453,19 @@ export function RecordScreen() {
 
       {mode !== "receipt" ? (
         <div className="space-y-3">
+          {mode === "voice" && spoken ? (
+            <div className="rounded-2xl border border-border bg-card px-3 py-3" aria-readonly="true">
+              <p className="text-sm font-semibold text-muted-foreground">
+                {spoken.language === "so" ? "What you said in Somali" : "What you said in Luganda"}
+              </p>
+              <p className="mt-1 text-base leading-6">{spoken.text}</p>
+            </div>
+          ) : null}
           <Textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder={EXAMPLE}
-            aria-label="What happened in the business"
+            aria-label={spoken ? "English" : "What happened in the business"}
           />
           {mode === "text" ? (
             <button
@@ -414,6 +477,29 @@ export function RecordScreen() {
             </button>
           ) : (
             <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Language you will speak">
+                {VOICE_LANGUAGES.map((item) => {
+                  const selected = voiceLanguage === item.code;
+                  return (
+                    <button
+                      key={item.code}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={recording || transcribing}
+                      onClick={() => chooseLanguage(item.code)}
+                      className={cn(
+                        "h-11 rounded-xl border text-sm font-semibold disabled:opacity-50",
+                        selected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card text-foreground",
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
               <p
                 className="text-center text-2xl font-semibold tabular-nums tracking-tight"
                 aria-live="polite"
@@ -443,7 +529,7 @@ export function RecordScreen() {
                 {voiceMessage ||
                   (transcribing
                     ? "Transcribing…"
-                    : "Record up to 2 minutes. Review the words in the box, then tap Read this.")}
+                    : "Record up to 2 minutes. English goes in the box. Check it, then tap Read this.")}
               </p>
             </div>
           )}
