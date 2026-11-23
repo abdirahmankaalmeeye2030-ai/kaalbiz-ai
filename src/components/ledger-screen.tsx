@@ -26,7 +26,7 @@ type DateFilter = "all" | "today" | "week" | "custom";
 
 export function LedgerScreen() {
   const { entries, ready, remove } = useLedger();
-  const [types, setTypes] = useState<TransactionType[]>([]);
+  const [type, setType] = useState<TransactionType | "all">("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customDate, setCustomDate] = useState("");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -41,7 +41,8 @@ export function LedgerScreen() {
     return {};
   }, [customDate, dateFilter, today]);
 
-  const visible = sortTransactions(filterTransactions(entries, { types, ...range }));
+  const visible = sortTransactions(filterTransactions(entries, { type, ...range }));
+  const selectedTypes = type === "all" ? [] : [type];
   const totals = useMemo(() => ledgerSheetTotals(visible), [visible]);
   const deleting = entries.find((entry) => entry.id === pendingDelete);
   const downloadDisabled = !ready || visible.length === 0 || exporting;
@@ -58,7 +59,7 @@ export function LedgerScreen() {
   function downloadCsv() {
     setExportError(null);
     const csv = ledgerToCsv(visible);
-    saveFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), ledgerFilename(today, "csv", types));
+    saveFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), ledgerFilename(today, "csv", selectedTypes));
   }
 
   async function downloadExcel() {
@@ -70,7 +71,7 @@ export function LedgerScreen() {
         new Blob([buffer], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
-        ledgerFilename(today, "xlsx", types),
+        ledgerFilename(today, "xlsx", selectedTypes),
       );
     } catch {
       setExportError("Could not make the Excel file. Try again.");
@@ -88,36 +89,8 @@ export function LedgerScreen() {
         </p>
       </div>
 
-      <div>
-        <div className="mb-2 flex items-baseline justify-between gap-3">
-          <p className="text-sm font-semibold" id="ledger-type-label">
-            Type
-          </p>
-          <p className="text-sm font-semibold tabular-nums" role="status">
-            {visible.length} {visible.length === 1 ? "entry" : "entries"}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ledger-type-label">
-          <FilterChip selected={types.length === 0} onClick={() => setTypes([])}>
-            All
-          </FilterChip>
-          {TRANSACTION_TYPES.map((item) => (
-            <FilterChip
-              key={item}
-              selected={types.includes(item)}
-              onClick={() =>
-                setTypes((current) =>
-                  current.includes(item) ? current.filter((value) => value !== item) : [...current, item],
-                )
-              }
-            >
-              {ledgerTypeLabel(item)}
-            </FilterChip>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
         {(
           [
             ["all", "All dates"],
@@ -130,6 +103,10 @@ export function LedgerScreen() {
             {label}
           </FilterChip>
         ))}
+        </div>
+        <p className="text-sm font-semibold tabular-nums" role="status">
+          {visible.length} {visible.length === 1 ? "entry" : "entries"}
+        </p>
       </div>
       {dateFilter === "custom" ? (
         <Input type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} aria-label="Filter by date" />
@@ -160,7 +137,7 @@ export function LedgerScreen() {
 
       {!ready ? <p className="text-sm text-muted-foreground">Loading your records…</p> : null}
 
-      {ready && visible.length === 0 ? (
+      {ready && entries.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border px-4 py-6">
           <p className="font-semibold">No records in this view.</p>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -172,7 +149,15 @@ export function LedgerScreen() {
         </div>
       ) : null}
 
-      {visible.length > 0 ? <LedgerTable rows={visible} totals={totals} onDelete={setPendingDelete} /> : null}
+      {ready && entries.length > 0 ? (
+        <LedgerTable
+          rows={visible}
+          totals={totals}
+          type={type}
+          onTypeChange={setType}
+          onDelete={setPendingDelete}
+        />
+      ) : null}
 
       {ready && entries.length > 0 ? (
         <div className="border-t border-border pt-4">
@@ -214,10 +199,14 @@ function formatSheetAmount(amount: number): string {
 function LedgerTable({
   rows,
   totals,
+  type,
+  onTypeChange,
   onDelete,
 }: {
   rows: LedgerEntry[];
   totals: { moneyIn: number; moneyOut: number; net: number };
+  type: TransactionType | "all";
+  onTypeChange: (type: TransactionType | "all") => void;
   onDelete: (id: string) => void;
 }) {
   const totalLines = [
@@ -238,10 +227,15 @@ function LedgerTable({
                 className={cn(
                   "sticky top-0 z-20 border border-border bg-secondary px-3 py-2 text-left font-semibold whitespace-nowrap",
                   index === 0 && "left-0 z-30 min-w-28",
+                  index === 1 && "min-w-44",
                   index === 4 && "text-right",
                 )}
               >
-                {label}
+                {index === 1 ? (
+                  <TypeFilter value={type} onChange={onTypeChange} />
+                ) : (
+                  label
+                )}
               </th>
             ))}
             <th scope="col" className="sticky top-0 z-20 border border-border bg-secondary px-3 py-2 font-semibold">
@@ -250,6 +244,13 @@ function LedgerTable({
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="border border-border px-3 py-4 text-muted-foreground">
+                No records for this type.
+              </td>
+            </tr>
+          ) : null}
           {rows.map((entry, index) => {
             const zebra = index % 2 === 1;
             const fill = zebra ? "bg-[#f3ecdf]" : "bg-card";
@@ -307,6 +308,36 @@ function LedgerTable({
         </tfoot>
       </table>
     </div>
+  );
+}
+
+function TypeFilter({
+  value,
+  onChange,
+}: {
+  value: TransactionType | "all";
+  onChange: (type: TransactionType | "all") => void;
+}) {
+  return (
+    <label className="block min-w-40">
+      <span className="mb-1 block text-xs font-semibold tracking-wide">Type ▾</span>
+      <select
+        aria-label="Type"
+        value={value}
+        onChange={(event) => {
+          const next = event.target.value;
+          onChange(next === "all" ? "all" : (next as TransactionType));
+        }}
+        className="h-11 w-full rounded-lg border border-border bg-card px-2 text-base font-semibold text-foreground"
+      >
+        <option value="all">All</option>
+        {TRANSACTION_TYPES.map((item) => (
+          <option key={item} value={item}>
+            {ledgerTypeLabel(item)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

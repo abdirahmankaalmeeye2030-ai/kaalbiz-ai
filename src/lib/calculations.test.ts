@@ -187,17 +187,11 @@ describe("recentTransactions and filterTransactions", () => {
     ).toEqual(["c"]);
   });
 
-  it("keeps several types and still applies the date", () => {
-    expect(filterTransactions(rows, { types: ["sale", "expense"] }).map((row) => row.id)).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+  it("filters one type at a time and still applies the date", () => {
+    expect(filterTransactions(rows, { type: "expense" }).map((row) => row.id)).toEqual(["b"]);
+    expect(filterTransactions(rows, { type: "all" }).map((row) => row.id)).toEqual(["a", "b", "c"]);
     expect(
-      filterTransactions(rows, { types: ["expense"], from: "2026-11-21", to: "2026-11-21" }).map(
-        (row) => row.id,
-      ),
-    ).toEqual(["b"]);
-    expect(filterTransactions(rows, { types: [] }).map((row) => row.id)).toEqual(["a", "b", "c"]);
+      filterTransactions(rows, { type: "sale", from: "2026-11-21", to: "2026-11-21" }).map((row) => row.id),
+    ).toEqual(["c"]);
   });
 });

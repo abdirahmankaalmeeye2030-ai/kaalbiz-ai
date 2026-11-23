@@ -171,16 +171,14 @@ describe("ledger xlsx", () => {
     expect(sheet?.getColumn(1).width).toBe(14);
     expect(ledgerFilename("2026-11-23", "xlsx")).toBe("kaalbiz-ledger-2026-11-23.xlsx");
     expect(ledgerFilename("2026-11-24", "xlsx", ["sale"])).toBe("kaalbiz-ledger-sales-2026-11-24.xlsx");
-    expect(ledgerFilename("2026-11-24", "csv", ["expense", "sale"])).toBe(
-      "kaalbiz-ledger-sales-expenses-2026-11-24.csv",
-    );
+    expect(ledgerFilename("2026-11-24", "csv", ["expense"])).toBe("kaalbiz-ledger-expenses-2026-11-24.csv");
   });
 });
 
 describe("filtered ledger totals and export", () => {
   it("totals and CSV include only the chosen types", () => {
-    const sales = filterTransactions(rows, { types: ["sale"] });
-    const expenses = filterTransactions(rows, { types: ["expense"] });
+    const sales = filterTransactions(rows, { type: "sale" });
+    const expenses = filterTransactions(rows, { type: "expense" });
     expect(sales.map((row) => row.id)).toEqual(["sale"]);
     expect(ledgerSheetTotals(sales)).toEqual({ moneyIn: 10000, moneyOut: 0, net: 10000 });
     expect(ledgerSheetTotals(expenses)).toEqual({ moneyIn: 0, moneyOut: 3000, net: -3000 });
