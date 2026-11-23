@@ -9,6 +9,7 @@ import { computeTotals } from "@/lib/calculations";
 import { postJson } from "@/lib/client";
 import { formatDisplayDate, kampalaToday } from "@/lib/dates";
 import { evaluateGoals, goalSummaryLine } from "@/lib/goals";
+import { salesByPerson } from "@/lib/people";
 import { formatUgx } from "@/lib/money";
 import { useGoals } from "@/lib/use-goals";
 import { useLedger } from "@/lib/use-ledger";
@@ -44,6 +45,7 @@ export function SummaryScreen() {
   const day = entries.filter((entry) => entry.date === date);
   const dayTotals = computeTotals(day);
   const outstanding = computeTotals(entries).outstanding;
+  const byPerson = salesByPerson(entries);
 
   return (
     <div className="space-y-5">
@@ -80,6 +82,22 @@ export function SummaryScreen() {
           <Figure label="Records" value={String(dayTotals.count)} />
         </div>
       ) : null}
+
+      <Card>
+        <p className="text-sm font-semibold">Sales by person</p>
+        {byPerson.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No sales yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {byPerson.map((row) => (
+              <li key={row.name} className="flex items-center justify-between gap-3 text-sm">
+                <span>{row.name}</span>
+                <span className="font-semibold tabular-nums">{formatUgx(row.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card>
         <p className="text-sm font-semibold">Customers still owe you</p>

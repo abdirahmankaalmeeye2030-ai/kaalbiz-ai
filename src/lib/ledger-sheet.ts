@@ -7,6 +7,7 @@ export const LEDGER_HEADERS = [
   "Type",
   "Description",
   "Person",
+  "Recorded by",
   "Amount (UGX)",
   "Payment",
 ] as const;
@@ -18,6 +19,7 @@ const TYPE_WORDS: Record<TransactionType, string> = {
   debt_given: "Money owed to me",
   debt_payment_received: "Old debt paid",
   supplier_payment: "Money I paid a supplier",
+  supplier_debt: "Money I owe a supplier",
   other: "Other",
 };
 
@@ -28,6 +30,7 @@ const PAYMENT_WORDS: Record<TransactionType, string> = {
   debt_given: "Not paid yet",
   debt_payment_received: "Paid",
   supplier_payment: "Paid",
+  supplier_debt: "Not paid yet",
   other: "",
 };
 
@@ -36,6 +39,7 @@ export interface LedgerSheetRow {
   type: string;
   description: string;
   person: string;
+  recordedBy: string;
   amount: number;
   payment: string;
 }
@@ -61,6 +65,7 @@ export function toLedgerSheetRow(entry: LedgerEntry): LedgerSheetRow {
     type: ledgerTypeLabel(entry.type),
     description: `${entry.description.trim() || "Transaction"}${sample}`,
     person: entry.counterparty?.trim() ?? "",
+    recordedBy: entry.recordedBy?.trim() || "Not set",
     amount: Math.round(entry.amount),
     payment: ledgerPaymentStatus(entry.type),
   };
@@ -82,6 +87,7 @@ const FILE_SLUG: Record<TransactionType, string> = {
   debt_given: "owed-to-me",
   debt_payment_received: "debt-paid",
   supplier_payment: "supplier-paid",
+  supplier_debt: "i-owe",
   other: "other",
 };
 
@@ -113,12 +119,20 @@ export function ledgerToCsv(entries: LedgerEntry[]): string {
     csvLine([...LEDGER_HEADERS]),
     ...entries.map((entry) => {
       const row = toLedgerSheetRow(entry);
-      return csvLine([row.date, row.type, row.description, row.person, row.amount, row.payment]);
+      return csvLine([
+        row.date,
+        row.type,
+        row.description,
+        row.person,
+        row.recordedBy,
+        row.amount,
+        row.payment,
+      ]);
     }),
     "",
-    csvLine(["", "", "Money in", "", totals.moneyIn, ""]),
-    csvLine(["", "", "Money out", "", totals.moneyOut, ""]),
-    csvLine(["", "", "Net", "", totals.net, ""]),
+    csvLine(["", "", "Money in", "", "", totals.moneyIn, ""]),
+    csvLine(["", "", "Money out", "", "", totals.moneyOut, ""]),
+    csvLine(["", "", "Net", "", "", totals.net, ""]),
   ];
   return `\uFEFF${lines.join("\r\n")}`;
 }
@@ -138,6 +152,7 @@ export async function ledgerToXlsx(entries: LedgerEntry[]): Promise<ArrayBuffer>
     { width: 28 },
     { width: 42 },
     { width: 22 },
+    { width: 18 },
     { width: 16 },
     { width: 16 },
   ];
@@ -153,12 +168,13 @@ export async function ledgerToXlsx(entries: LedgerEntry[]): Promise<ArrayBuffer>
       row.type,
       row.description,
       row.person,
+      row.recordedBy,
       row.amount,
       row.payment,
     ]);
     added.getCell(1).numFmt = "yyyy-mm-dd";
-    added.getCell(5).numFmt = "#,##0";
-    added.getCell(5).alignment = { horizontal: "right" };
+    added.getCell(6).numFmt = "#,##0";
+    added.getCell(6).alignment = { horizontal: "right" };
   }
 
   const totals = ledgerSheetTotals(entries);
@@ -168,10 +184,10 @@ export async function ledgerToXlsx(entries: LedgerEntry[]): Promise<ArrayBuffer>
     ["Money out", totals.moneyOut],
     ["Net", totals.net],
   ] as const) {
-    const totalRow = sheet.addRow(["", "", label, "", amount, ""]);
+    const totalRow = sheet.addRow(["", "", label, "", "", amount, ""]);
     totalRow.font = { bold: true };
-    totalRow.getCell(5).numFmt = "#,##0";
-    totalRow.getCell(5).alignment = { horizontal: "right" };
+    totalRow.getCell(6).numFmt = "#,##0";
+    totalRow.getCell(6).alignment = { horizontal: "right" };
   }
 
   const raw = await workbook.xlsx.writeBuffer();

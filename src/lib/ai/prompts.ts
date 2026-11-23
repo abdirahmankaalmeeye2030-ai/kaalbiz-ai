@@ -7,13 +7,18 @@ Money is Ugandan shillings (UGX). No decimals. 15k means 15000. 1.2m means 12000
 
 Return ONLY JSON:
 {"transactions":[{
-  "type":"sale|expense|purchase|debt_given|debt_payment_received|supplier_payment|other",
+  "type":"sale|expense|purchase|debt_given|debt_payment_received|supplier_payment|supplier_debt|other",
   "amount":15000,
   "currency":"UGX",
   "date":"${clientDate}",
   "description":"short plain English",
   "category":"short label such as Food, Rent, Stock, Salon, Transport",
   "counterparty":"name or null",
+  "recordedBy":"staff name if the text says who did it, else null",
+  "phone":"phone or null",
+  "location":"place or null",
+  "dueDate":"YYYY-MM-DD or null",
+  "agreedAmount":null,
   "confidence":0.9,
   "notes":null
 }]}
@@ -24,7 +29,8 @@ Types:
 - purchase: stock bought for the business and paid now.
 - debt_given: the customer still owes the business. Amount is what they owe, not cash received.
 - debt_payment_received: the customer paid back money they already owed.
-- supplier_payment: money paid to a supplier.
+- supplier_payment: money paid to a supplier for something already owed.
+- supplier_debt: the business still owes a supplier. Amount is what is still owed, not cash paid.
 - other: anything else.
 
 If one message is a sale that was only partly paid, return a sale for the amount paid AND a debt_given for the amount still owed. Do not also add the full price as a third record.

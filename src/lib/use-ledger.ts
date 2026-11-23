@@ -40,6 +40,10 @@ export function useLedger() {
     saveLedger(parseLedger(getSnapshot()).filter((entry) => entry.id !== id));
   }, []);
 
+  const update = useCallback((id: string, patch: Partial<LedgerEntry>) => {
+    saveLedger(parseLedger(getSnapshot()).map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+  }, []);
+
   const loadDemo = useCallback(() => {
     const next = withDemoData(parseLedger(getSnapshot()), kampalaToday());
     saveLedger(next);
@@ -50,5 +54,5 @@ export function useLedger() {
     saveLedger([]);
   }, []);
 
-  return { entries, ready: true, add, remove, loadDemo, clear };
+  return { entries, ready: true, add, remove, update, loadDemo, clear };
 }

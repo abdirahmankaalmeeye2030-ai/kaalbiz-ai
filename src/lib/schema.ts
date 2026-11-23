@@ -46,6 +46,11 @@ const extractedSchema = z.object({
   counterparty: z.preprocess(emptyToNull, z.string().nullable().optional()),
   confidence: z.preprocess(coerceConfidence, z.number().optional()),
   notes: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  recordedBy: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  phone: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  location: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  dueDate: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  agreedAmount: z.preprocess(coerceAmount, z.number().nullable().optional()),
 });
 
 const DEFAULT_CATEGORY: Record<TransactionType, string> = {
@@ -55,8 +60,16 @@ const DEFAULT_CATEGORY: Record<TransactionType, string> = {
   debt_given: "Customer credit",
   debt_payment_received: "Customer credit",
   supplier_payment: "Suppliers",
+  supplier_debt: "Suppliers",
   other: "Other",
 };
+
+function cleanDateOrNull(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match && isIsoDate(match[1])) return match[1];
+  return null;
+}
 
 function cleanDate(value: string | null | undefined, clientDate: string): string {
   if (!value) return clientDate;
@@ -105,6 +118,14 @@ export function normalizeExtracted(
       description: (parsed.data.description ?? "Transaction").slice(0, 180),
       category: (parsed.data.category ?? DEFAULT_CATEGORY[parsed.data.type]).slice(0, 40),
       counterparty: parsed.data.counterparty ?? null,
+      recordedBy: parsed.data.recordedBy ?? null,
+      phone: parsed.data.phone ?? null,
+      location: parsed.data.location ?? null,
+      dueDate: cleanDateOrNull(parsed.data.dueDate),
+      agreedAmount:
+        parsed.data.agreedAmount && parsed.data.agreedAmount > 0
+          ? Math.round(parsed.data.agreedAmount)
+          : null,
       confidence,
       notes: parsed.data.notes ? parsed.data.notes.slice(0, 240) : null,
     });

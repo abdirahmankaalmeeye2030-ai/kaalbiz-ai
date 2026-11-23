@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { postJson } from "@/lib/client";
 import { compressImage } from "@/lib/compress-image";
 import { kampalaToday } from "@/lib/dates";
+import { confirmFieldErrors, matchStaff, normalizeUgandaPhone } from "@/lib/people";
+import { useContacts, useStaff } from "@/lib/use-people";
 import { useLedger } from "@/lib/use-ledger";
 import type { DraftTransaction, ExtractionResponse, LedgerEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -62,13 +64,21 @@ function microphoneError(error: unknown): string {
   return "Could not use the microphone. Type it instead.";
 }
 
-function toDrafts(response: ExtractionResponse): DraftTransaction[] {
-  return response.transactions.map((tx) => ({
-    ...tx,
-    currency: "UGX",
-    draftId: crypto.randomUUID(),
-    origin: tx.isSample ? "sample" : response.source === "ai" ? "ai" : "demo",
-  }));
+function toDrafts(response: ExtractionResponse, staff: string[], lastUsed: string): DraftTransaction[] {
+  return response.transactions.map((tx) => {
+    const credit = tx.type === "debt_given" || tx.type === "supplier_debt";
+    return {
+      ...tx,
+      currency: "UGX",
+      recordedBy: matchStaff(tx.recordedBy, staff) ?? lastUsed,
+      phone: tx.phone ?? null,
+      location: tx.location ?? null,
+      dueDate: tx.dueDate ?? null,
+      agreedAmount: tx.agreedAmount ?? (credit ? tx.amount : null),
+      draftId: crypto.randomUUID(),
+      origin: tx.isSample ? "sample" : response.source === "ai" ? "ai" : "demo",
+    };
+  });
 }
 
 function toEntry(draft: DraftTransaction): LedgerEntry {
@@ -81,6 +91,11 @@ function toEntry(draft: DraftTransaction): LedgerEntry {
     description: draft.description.trim() || "Transaction",
     category: draft.category.trim() || "Other",
     counterparty: draft.counterparty?.trim() || null,
+    recordedBy: draft.recordedBy?.trim() || null,
+    phone: normalizeUgandaPhone(draft.phone ?? ""),
+    location: draft.location?.trim() || null,
+    dueDate: draft.dueDate || null,
+    agreedAmount: draft.agreedAmount && draft.agreedAmount > 0 ? Math.round(draft.agreedAmount) : null,
     confidence: draft.confidence,
     notes: draft.notes,
     source: draft.origin,
@@ -91,6 +106,8 @@ function toEntry(draft: DraftTransaction): LedgerEntry {
 
 export function RecordScreen() {
   const { add } = useLedger();
+  const { staff, lastUsed, remember } = useStaff();
+  const { contacts, upsert } = useContacts();
   const [mode, setMode] = useState<Mode>("text");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -158,7 +175,7 @@ export function RecordScreen() {
         clientDate: kampalaToday(),
       });
       setResult(response);
-      setDrafts(toDrafts(response));
+      setDrafts(toDrafts(response, staff, lastUsed));
     } catch (err) {
       setResult(null);
       setDrafts([]);
@@ -360,7 +377,7 @@ export function RecordScreen() {
         clientDate: kampalaToday(),
       });
       setResult(response);
-      setDrafts(toDrafts(response));
+      setDrafts(toDrafts(response, staff, lastUsed));
     } catch (err) {
       setResult(null);
       setDrafts([]);
@@ -372,11 +389,26 @@ export function RecordScreen() {
 
   function confirm(ids: string[]) {
     const chosen = drafts.filter(
-      (draft) => ids.includes(draft.draftId) && draft.amount > 0 && draft.description.trim(),
+      (draft) => ids.includes(draft.draftId) && Object.keys(confirmFieldErrors(draft, staff)).length === 0,
     );
     if (chosen.length === 0) return;
     add(chosen.map(toEntry));
-    setDrafts((current) => current.filter((draft) => !ids.includes(draft.draftId)));
+    for (const draft of chosen) {
+      if (draft.recordedBy) remember(draft.recordedBy);
+      if (
+        (draft.type === "debt_given" || draft.type === "supplier_debt") &&
+        draft.counterparty?.trim()
+      ) {
+        upsert({
+          name: draft.counterparty.trim(),
+          phone: normalizeUgandaPhone(draft.phone ?? ""),
+          location: draft.location?.trim() || null,
+          kind: draft.type === "supplier_debt" ? "supplier" : "customer",
+        });
+      }
+    }
+    const savedIds = new Set(chosen.map((draft) => draft.draftId));
+    setDrafts((current) => current.filter((draft) => !savedIds.has(draft.draftId)));
     setSaved(chosen.length);
   }
 
@@ -529,6 +561,8 @@ export function RecordScreen() {
                 <DraftCard
                   key={draft.draftId}
                   draft={draft}
+                  staff={staff}
+                  contacts={contacts}
                   onChange={(next) =>
                     setDrafts((current) => current.map((item) => (item.draftId === next.draftId ? next : item)))
                   }

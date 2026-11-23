@@ -36,6 +36,12 @@ export function parseLedger(raw: string | null): LedgerEntry[] {
       notes: typeof entry.notes === "string" ? entry.notes : null,
       source: entry.source === "ai" || entry.source === "sample" ? entry.source : "demo",
       isSample: Boolean(entry.isSample),
+      recordedBy: typeof entry.recordedBy === "string" && entry.recordedBy.trim() ? entry.recordedBy.trim() : null,
+      phone: typeof entry.phone === "string" && entry.phone.trim() ? entry.phone.trim() : null,
+      location: typeof entry.location === "string" && entry.location.trim() ? entry.location.trim() : null,
+      dueDate: typeof entry.dueDate === "string" && entry.dueDate.trim() ? entry.dueDate.trim() : null,
+      agreedAmount:
+        typeof entry.agreedAmount === "number" && entry.agreedAmount > 0 ? Math.round(entry.agreedAmount) : null,
     }));
   } catch {
     return [];

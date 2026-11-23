@@ -16,6 +16,7 @@ function emptyByType(): Record<TransactionType, number> {
     debt_given: 0,
     debt_payment_received: 0,
     supplier_payment: 0,
+    supplier_debt: 0,
     other: 0,
   };
 }
@@ -108,7 +109,13 @@ export function recentTransactions(
 
 export function filterTransactions(
   transactions: LedgerEntry[],
-  filter: { type?: TransactionType | "all"; types?: TransactionType[]; from?: string; to?: string },
+  filter: {
+    type?: TransactionType | "all";
+    types?: TransactionType[];
+    from?: string;
+    to?: string;
+    recordedBy?: string;
+  },
 ): LedgerEntry[] {
   const selected = (filter.types ?? []).filter((type) => TRANSACTION_TYPES.includes(type));
   return transactions.filter((tx) => {
@@ -119,6 +126,10 @@ export function filterTransactions(
     }
     if (filter.from && tx.date < filter.from) return false;
     if (filter.to && tx.date > filter.to) return false;
+    if (filter.recordedBy && filter.recordedBy !== "all") {
+      const name = tx.recordedBy?.trim() || "Not set";
+      if (name !== filter.recordedBy) return false;
+    }
     return true;
   });
 }

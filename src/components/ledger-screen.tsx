@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataActions } from "@/components/data-actions";
@@ -18,6 +19,7 @@ import {
   ledgerTypeLabel,
 } from "@/lib/ledger-sheet";
 import { formatUgx } from "@/lib/money";
+import { useStaff } from "@/lib/use-people";
 import { useLedger } from "@/lib/use-ledger";
 import { TRANSACTION_TYPES, type LedgerEntry, type TransactionType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,8 +27,10 @@ import { cn } from "@/lib/utils";
 type DateFilter = "all" | "today" | "week" | "custom";
 
 export function LedgerScreen() {
-  const { entries, ready, remove } = useLedger();
+  const { entries, ready, remove, update } = useLedger();
+  const { staff } = useStaff();
   const [type, setType] = useState<TransactionType | "all">("all");
+  const [person, setPerson] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customDate, setCustomDate] = useState("");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -41,7 +45,12 @@ export function LedgerScreen() {
     return {};
   }, [customDate, dateFilter, today]);
 
-  const visible = sortTransactions(filterTransactions(entries, { type, ...range }));
+  const people = useMemo(() => {
+    const names = new Set(staff);
+    for (const entry of entries) names.add(entry.recordedBy?.trim() || "Not set");
+    return [...names];
+  }, [entries, staff]);
+  const visible = sortTransactions(filterTransactions(entries, { type, recordedBy: person, ...range }));
   const selectedTypes = type === "all" ? [] : [type];
   const totals = useMemo(() => ledgerSheetTotals(visible), [visible]);
   const deleting = entries.find((entry) => entry.id === pendingDelete);
@@ -108,6 +117,32 @@ export function LedgerScreen() {
           {visible.length} {visible.length === 1 ? "entry" : "entries"}
         </p>
       </div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="block min-w-40 flex-1">
+          <span className="mb-1 block text-xs font-semibold tracking-wide">By ▾</span>
+          <select
+            aria-label="By"
+            value={person}
+            onChange={(event) => setPerson(event.target.value)}
+            className="h-11 w-full rounded-lg border border-border bg-card px-2 text-base font-semibold"
+          >
+            <option value="all">All</option>
+            {people.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex gap-4 pb-2 text-sm font-semibold">
+          <Link href="/who-owes" className="text-primary">
+            Who owes
+          </Link>
+          <Link href="/settings" className="text-primary">
+            Staff
+          </Link>
+        </div>
+      </div>
       {dateFilter === "custom" ? (
         <Input type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} aria-label="Filter by date" />
       ) : null}
@@ -155,6 +190,8 @@ export function LedgerScreen() {
           totals={totals}
           type={type}
           onTypeChange={setType}
+          staff={staff}
+          onUpdate={update}
           onDelete={setPendingDelete}
         />
       ) : null}
@@ -201,12 +238,16 @@ function LedgerTable({
   totals,
   type,
   onTypeChange,
+  staff,
+  onUpdate,
   onDelete,
 }: {
   rows: LedgerEntry[];
   totals: { moneyIn: number; moneyOut: number; net: number };
   type: TransactionType | "all";
   onTypeChange: (type: TransactionType | "all") => void;
+  staff: string[];
+  onUpdate: (id: string, patch: Partial<LedgerEntry>) => void;
   onDelete: (id: string) => void;
 }) {
   const totalLines = [
@@ -246,7 +287,7 @@ function LedgerTable({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={7} className="border border-border px-3 py-4 text-muted-foreground">
+              <td colSpan={8} className="border border-border px-3 py-4 text-muted-foreground">
                 No records for this type.
               </td>
             </tr>
@@ -270,6 +311,21 @@ function LedgerTable({
                 </td>
                 <td className="border border-border px-3 py-2 whitespace-nowrap">
                   {entry.counterparty?.trim() || "—"}
+                </td>
+                <td className="border border-border px-2 py-1 whitespace-nowrap">
+                  <select
+                    aria-label={`Recorded by for ${entry.description}`}
+                    value={entry.recordedBy ?? ""}
+                    onChange={(event) => onUpdate(entry.id, { recordedBy: event.target.value || null })}
+                    className="h-9 max-w-36 rounded-lg border border-border bg-card px-2 text-sm"
+                  >
+                    <option value="">Not set</option>
+                    {staff.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="border border-border px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap">
                   {formatSheetAmount(entry.amount)}
@@ -296,7 +352,7 @@ function LedgerTable({
           {totalLines.map(([label, amount]) => (
             <tr key={label} className="font-semibold">
               <td className="sticky left-0 z-10 border border-border bg-secondary px-3 py-2">{label}</td>
-              <td className="border border-border bg-secondary px-3 py-2" colSpan={3}>
+              <td className="border border-border bg-secondary px-3 py-2" colSpan={4}>
                 {label === "Net" ? "Money in minus money out" : ""}
               </td>
               <td className="border border-border bg-secondary px-3 py-2 text-right tabular-nums">

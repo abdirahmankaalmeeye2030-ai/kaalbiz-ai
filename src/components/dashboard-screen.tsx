@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { computeTotals, last7Days, recentTransactions } from "@/lib/calculations";
 import { formatDisplayDate, kampalaToday } from "@/lib/dates";
 import { TYPE_LABELS } from "@/lib/labels";
+import { salesByPerson } from "@/lib/people";
 import { formatUgx } from "@/lib/money";
 import { useGoals } from "@/lib/use-goals";
 import { useLedger } from "@/lib/use-ledger";
@@ -19,6 +20,7 @@ export function DashboardScreen() {
   const { goals } = useGoals();
   const today = kampalaToday();
   const totals = computeTotals(entries);
+  const byPerson = salesByPerson(entries);
   const recent = recentTransactions(entries, 5);
   const days = today ? last7Days(entries, today) : [];
 
@@ -71,6 +73,27 @@ export function DashboardScreen() {
             <Stat label="Customers owe you" value={formatUgx(totals.outstanding)} hint="Open balances" />
             <Stat label="Records" value={String(totals.count)} hint="Confirmed on this phone" />
           </div>
+
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold">Sales by person</h2>
+              <Link href="/who-owes" className="text-sm font-semibold text-primary">
+                Who owes
+              </Link>
+            </div>
+            {byPerson.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">No sales yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {byPerson.map((row) => (
+                  <li key={row.name} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-semibold">{row.name}</span>
+                    <span className="tabular-nums">{formatUgx(row.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
 
           <Card>
             <h2 className="font-semibold">Last 7 days</h2>

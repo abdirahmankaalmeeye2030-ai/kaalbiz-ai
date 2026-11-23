@@ -5,6 +5,7 @@ export const TRANSACTION_TYPES = [
   "debt_given",
   "debt_payment_received",
   "supplier_payment",
+  "supplier_debt",
   "other",
 ] as const;
 
@@ -22,6 +23,11 @@ export interface ExtractedTransaction {
   counterparty: string | null;
   confidence: number;
   notes: string | null;
+  recordedBy?: string | null;
+  phone?: string | null;
+  location?: string | null;
+  dueDate?: string | null;
+  agreedAmount?: number | null;
   isSample?: boolean;
 }
 
@@ -41,6 +47,11 @@ export interface LedgerEntry {
   counterparty: string | null;
   confidence: number;
   notes: string | null;
+  recordedBy?: string | null;
+  phone?: string | null;
+  location?: string | null;
+  dueDate?: string | null;
+  agreedAmount?: number | null;
   source: "ai" | "demo" | "sample";
   isSample: boolean;
   createdAt: string;

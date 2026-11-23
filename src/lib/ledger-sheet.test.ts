@@ -94,6 +94,7 @@ describe("ledger sheet rows and totals", () => {
       type: "Sale",
       description: "Sugar, 2 bags",
       person: "Mama Grace",
+      recordedBy: "Not set",
       amount: 10000,
       payment: "Paid",
     });
@@ -124,13 +125,13 @@ describe("ledger CSV", () => {
   it("writes a UTF-8 BOM, quoted text, and the totals", () => {
     const csv = ledgerToCsv([rows[0], rows[1]]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
-    expect(csv.startsWith("\uFEFFDate,Type,Description,Person,Amount (UGX),Payment")).toBe(true);
+    expect(csv.startsWith("\uFEFFDate,Type,Description,Person,Recorded by,Amount (UGX),Payment")).toBe(true);
     expect(csv).toContain('"Sugar, 2 bags"');
     expect(csv).toContain("Money owed to me");
     expect(csv).toContain("Rice on credit (sample)");
-    expect(csv).toContain(",,Money in,,10000,");
-    expect(csv).toContain(",,Money out,,0,");
-    expect(csv).toContain(",,Net,,10000,");
+    expect(csv).toContain(",,Money in,,,10000,");
+    expect(csv).toContain(",,Money out,,,0,");
+    expect(csv).toContain(",,Net,,,10000,");
     expect(csv.includes("\r\n")).toBe(true);
   });
 });
@@ -143,7 +144,8 @@ describe("ledger xlsx", () => {
     const sheet = workbook.getWorksheet("Ledger");
     expect(sheet).toBeTruthy();
     expect(sheet?.getRow(1).getCell(1).value).toBe("Date");
-    expect(sheet?.getRow(1).getCell(5).value).toBe("Amount (UGX)");
+    expect(sheet?.getRow(1).getCell(5).value).toBe("Recorded by");
+    expect(sheet?.getRow(1).getCell(6).value).toBe("Amount (UGX)");
     expect(sheet?.getRow(1).font?.bold).toBe(true);
     expect(sheet?.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
 
@@ -156,18 +158,19 @@ describe("ledger xlsx", () => {
     expect(sheet?.getRow(2).getCell(2).value).toBe("Sale");
     expect(sheet?.getRow(2).getCell(3).value).toBe("Sugar, 2 bags");
     expect(sheet?.getRow(2).getCell(4).value).toBe("Mama Grace");
-    expect(sheet?.getRow(2).getCell(5).value).toBe(10000);
-    expect(sheet?.getRow(2).getCell(5).numFmt).toBe("#,##0");
-    expect(sheet?.getRow(2).getCell(6).value).toBe("Paid");
+    expect(sheet?.getRow(2).getCell(5).value).toBe("Not set");
+    expect(sheet?.getRow(2).getCell(6).value).toBe(10000);
+    expect(sheet?.getRow(2).getCell(6).numFmt).toBe("#,##0");
+    expect(sheet?.getRow(2).getCell(7).value).toBe("Paid");
     expect(sheet?.getRow(3).getCell(2).value).toBe("Expense");
-    expect(sheet?.getRow(3).getCell(5).value).toBe(3000);
+    expect(sheet?.getRow(3).getCell(6).value).toBe(3000);
 
     const labels = [5, 6, 7].map((index) => sheet?.getRow(index).getCell(3).value);
     expect(labels).toEqual(["Money in", "Money out", "Net"]);
-    expect(sheet?.getRow(5).getCell(5).value).toBe(10000);
-    expect(sheet?.getRow(6).getCell(5).value).toBe(3000);
-    expect(sheet?.getRow(7).getCell(5).value).toBe(7000);
-    expect(sheet?.getRow(5).getCell(5).numFmt).toBe("#,##0");
+    expect(sheet?.getRow(5).getCell(6).value).toBe(10000);
+    expect(sheet?.getRow(6).getCell(6).value).toBe(3000);
+    expect(sheet?.getRow(7).getCell(6).value).toBe(7000);
+    expect(sheet?.getRow(5).getCell(6).numFmt).toBe("#,##0");
     expect(sheet?.getColumn(1).width).toBe(14);
     expect(ledgerFilename("2026-11-23", "xlsx")).toBe("kaalbiz-ledger-2026-11-23.xlsx");
     expect(ledgerFilename("2026-11-24", "xlsx", ["sale"])).toBe("kaalbiz-ledger-sales-2026-11-24.xlsx");
@@ -186,7 +189,7 @@ describe("filtered ledger totals and export", () => {
     const csv = ledgerToCsv(expenses);
     expect(csv).toContain("Expense,Airtime");
     expect(csv).not.toContain("Sale");
-    expect(csv).toContain(",,Money out,,3000,");
-    expect(csv).toContain(",,Net,,-3000,");
+    expect(csv).toContain(",,Money out,,,3000,");
+    expect(csv).toContain(",,Net,,,-3000,");
   });
 });
