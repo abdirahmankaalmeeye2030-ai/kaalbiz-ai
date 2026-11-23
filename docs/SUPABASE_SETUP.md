@@ -32,18 +32,17 @@ The migration creates `businesses`, `business_members`, `entries`, `contacts`, `
 
 Open **Authentication → URL configuration**.
 
-**Site URL** for local work:
+**Site URL** for the accounts preview:
 
-`http://localhost:38471`
+`https://kaalbiz-ai-business-git-feature-accounts-cloud-kaal2.vercel.app`
 
-**Redirect URLs** (add each one):
+**Redirect URLs** already allowed on this project:
 
-- `http://localhost:38471/auth/callback`
-- `http://127.0.0.1:38471/auth/callback`
-- `https://kaalbiz-ai-business.vercel.app/auth/callback`
-- Each Vercel preview you use, for example `https://kaalbiz-ai-business-git-feature-accounts-cloud-kaal2.vercel.app/auth/callback`
+- `https://*-kaal2.vercel.app/**`
+- `https://kaalbiz-ai-business.vercel.app/**`
+- `http://localhost:38471/**`
 
-Supabase does not accept a wildcard for every preview. When you open a new preview, copy its `https://…vercel.app/auth/callback` address into this list.
+For local work you can also set the Site URL to `http://localhost:38471`. The app still sends people to `/auth/callback` on whatever origin they used.
 
 ## 5. Local env
 
@@ -66,8 +65,10 @@ Restart `npm run dev`. Sign in at [http://localhost:38471/sign-in](http://localh
 
 1. Vercel → the KaalBiz project → **Settings → Environment Variables**.
 2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-3. Tick **Preview** only. Leave Production unchecked until you want the judged link to use accounts.
-4. Redeploy the preview branch.
+3. Scope them to **Preview**, and only the branch `feature/accounts-cloud`. Leave Production unchecked so the judged link stays local-only.
+4. Redeploy that branch. Next.js reads `NEXT_PUBLIC_` values at build time, so a new preview deployment is required after the keys change.
+
+The connected project URL is `https://fjllotlodzwjmfrkmjbx.supabase.co`. Do not commit the anon key.
 
 ## 7. What you should see
 
