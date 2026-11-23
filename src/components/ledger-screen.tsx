@@ -26,7 +26,7 @@ type DateFilter = "all" | "today" | "week" | "custom";
 
 export function LedgerScreen() {
   const { entries, ready, remove } = useLedger();
-  const [type, setType] = useState<TransactionType | "all">("all");
+  const [types, setTypes] = useState<TransactionType[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customDate, setCustomDate] = useState("");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function LedgerScreen() {
     return {};
   }, [customDate, dateFilter, today]);
 
-  const visible = sortTransactions(filterTransactions(entries, { type, ...range }));
+  const visible = sortTransactions(filterTransactions(entries, { types, ...range }));
   const totals = useMemo(() => ledgerSheetTotals(visible), [visible]);
   const deleting = entries.find((entry) => entry.id === pendingDelete);
   const downloadDisabled = !ready || visible.length === 0 || exporting;
@@ -58,7 +58,7 @@ export function LedgerScreen() {
   function downloadCsv() {
     setExportError(null);
     const csv = ledgerToCsv(visible);
-    saveFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), ledgerFilename(today, "csv"));
+    saveFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), ledgerFilename(today, "csv", types));
   }
 
   async function downloadExcel() {
@@ -70,7 +70,7 @@ export function LedgerScreen() {
         new Blob([buffer], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
-        ledgerFilename(today, "xlsx"),
+        ledgerFilename(today, "xlsx", types),
       );
     } catch {
       setExportError("Could not make the Excel file. Try again.");
@@ -88,15 +88,33 @@ export function LedgerScreen() {
         </p>
       </div>
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        <FilterChip selected={type === "all"} onClick={() => setType("all")}>
-          All
-        </FilterChip>
-        {TRANSACTION_TYPES.map((item) => (
-          <FilterChip key={item} selected={type === item} onClick={() => setType(item)}>
-            {ledgerTypeLabel(item)}
+      <div>
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <p className="text-sm font-semibold" id="ledger-type-label">
+            Type
+          </p>
+          <p className="text-sm font-semibold tabular-nums" role="status">
+            {visible.length} {visible.length === 1 ? "entry" : "entries"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ledger-type-label">
+          <FilterChip selected={types.length === 0} onClick={() => setTypes([])}>
+            All
           </FilterChip>
-        ))}
+          {TRANSACTION_TYPES.map((item) => (
+            <FilterChip
+              key={item}
+              selected={types.includes(item)}
+              onClick={() =>
+                setTypes((current) =>
+                  current.includes(item) ? current.filter((value) => value !== item) : [...current, item],
+                )
+              }
+            >
+              {ledgerTypeLabel(item)}
+            </FilterChip>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -304,9 +322,10 @@ function FilterChip({
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        "h-9 shrink-0 rounded-full px-3 text-sm font-semibold",
+        "min-h-11 shrink-0 rounded-full px-3 text-sm font-semibold",
         selected ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
       )}
     >

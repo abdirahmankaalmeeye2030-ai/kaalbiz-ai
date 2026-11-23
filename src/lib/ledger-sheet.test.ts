@@ -1,5 +1,6 @@
 import { Workbook } from "exceljs";
 import { describe, expect, it } from "vitest";
+import { filterTransactions } from "./calculations";
 import {
   ledgerFilename,
   ledgerSheetTotals,
@@ -169,5 +170,25 @@ describe("ledger xlsx", () => {
     expect(sheet?.getRow(5).getCell(5).numFmt).toBe("#,##0");
     expect(sheet?.getColumn(1).width).toBe(14);
     expect(ledgerFilename("2026-11-23", "xlsx")).toBe("kaalbiz-ledger-2026-11-23.xlsx");
+    expect(ledgerFilename("2026-11-24", "xlsx", ["sale"])).toBe("kaalbiz-ledger-sales-2026-11-24.xlsx");
+    expect(ledgerFilename("2026-11-24", "csv", ["expense", "sale"])).toBe(
+      "kaalbiz-ledger-sales-expenses-2026-11-24.csv",
+    );
+  });
+});
+
+describe("filtered ledger totals and export", () => {
+  it("totals and CSV include only the chosen types", () => {
+    const sales = filterTransactions(rows, { types: ["sale"] });
+    const expenses = filterTransactions(rows, { types: ["expense"] });
+    expect(sales.map((row) => row.id)).toEqual(["sale"]);
+    expect(ledgerSheetTotals(sales)).toEqual({ moneyIn: 10000, moneyOut: 0, net: 10000 });
+    expect(ledgerSheetTotals(expenses)).toEqual({ moneyIn: 0, moneyOut: 3000, net: -3000 });
+
+    const csv = ledgerToCsv(expenses);
+    expect(csv).toContain("Expense,Airtime");
+    expect(csv).not.toContain("Sale");
+    expect(csv).toContain(",,Money out,,3000,");
+    expect(csv).toContain(",,Net,,-3000,");
   });
 });

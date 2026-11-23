@@ -1,6 +1,6 @@
 import { Workbook } from "exceljs";
 import { computeTotals } from "./calculations";
-import type { LedgerEntry, TransactionType } from "./types";
+import { TRANSACTION_TYPES, type LedgerEntry, type TransactionType } from "./types";
 
 export const LEDGER_HEADERS = [
   "Date",
@@ -75,9 +75,26 @@ export function ledgerSheetTotals(entries: LedgerEntry[]): LedgerSheetTotals {
   };
 }
 
-export function ledgerFilename(date: string, extension: "xlsx" | "csv"): string {
+const FILE_SLUG: Record<TransactionType, string> = {
+  sale: "sales",
+  expense: "expenses",
+  purchase: "stock",
+  debt_given: "owed-to-me",
+  debt_payment_received: "debt-paid",
+  supplier_payment: "supplier-paid",
+  other: "other",
+};
+
+export function ledgerFilename(
+  date: string,
+  extension: "xlsx" | "csv",
+  types: TransactionType[] = [],
+): string {
   const safe = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "export";
-  return `kaalbiz-ledger-${safe}.${extension}`;
+  const slug = TRANSACTION_TYPES.filter((type) => types.includes(type))
+    .map((type) => FILE_SLUG[type])
+    .join("-");
+  return slug ? `kaalbiz-ledger-${slug}-${safe}.${extension}` : `kaalbiz-ledger-${safe}.${extension}`;
 }
 
 function csvCell(value: string | number): string {

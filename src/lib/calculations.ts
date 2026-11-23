@@ -108,10 +108,15 @@ export function recentTransactions(
 
 export function filterTransactions(
   transactions: LedgerEntry[],
-  filter: { type?: TransactionType | "all"; from?: string; to?: string },
+  filter: { type?: TransactionType | "all"; types?: TransactionType[]; from?: string; to?: string },
 ): LedgerEntry[] {
+  const selected = (filter.types ?? []).filter((type) => TRANSACTION_TYPES.includes(type));
   return transactions.filter((tx) => {
-    if (filter.type && filter.type !== "all" && tx.type !== filter.type) return false;
+    if (selected.length > 0) {
+      if (!selected.includes(tx.type)) return false;
+    } else if (filter.type && filter.type !== "all" && tx.type !== filter.type) {
+      return false;
+    }
     if (filter.from && tx.date < filter.from) return false;
     if (filter.to && tx.date > filter.to) return false;
     return true;
