@@ -10,6 +10,24 @@ export function isIsoDate(value: string): boolean {
   );
 }
 
+export function daysBetween(from: string, to: string): number {
+  if (!isIsoDate(from) || !isIsoDate(to)) return 0;
+  const [fromYear, fromMonth, fromDay] = from.split("-").map(Number);
+  const [toYear, toMonth, toDay] = to.split("-").map(Number);
+  const start = Date.UTC(fromYear, fromMonth - 1, fromDay);
+  const end = Date.UTC(toYear, toMonth - 1, toDay);
+  return Math.round((end - start) / 86_400_000);
+}
+
+export function addMonths(isoDate: string, months: number): string {
+  if (!isIsoDate(isoDate)) return isoDate;
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate();
+  shifted.setUTCDate(Math.min(day, lastDay));
+  return shifted.toISOString().slice(0, 10);
+}
+
 export function addDays(isoDate: string, days: number): string {
   if (!isIsoDate(isoDate)) return isoDate;
   const [year, month, day] = isoDate.split("-").map(Number);

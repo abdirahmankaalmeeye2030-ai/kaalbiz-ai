@@ -49,7 +49,7 @@ The provider call lives in `src/lib/ai/provider.ts`. Change that file to point a
 1. **Record** — Text, voice, or a receipt photo. Voice records with the microphone for up to 2 minutes, sends the audio to `/api/transcribe`, and puts the transcript in the box for review. Nothing is saved until you tap Read this, then Confirm. Receipts are resized in the browser before upload. Take photo opens the camera. Upload from gallery / files opens the gallery or file picker.
 2. **Confirm** — Each extracted record is an editable card. Low-confidence cards are highlighted. Nothing is saved until you tap Confirm.
 3. **Ledger** — Confirmed records in a spreadsheet, with filters and delete confirmation. Download Excel or CSV for the records currently on screen.
-4. **Today** — Sales, money spent, money in, money out, cash left, what customers owe, a 7-day chart, and recent records. The math is in `src/lib/calculations.ts`. The model never calculates totals.
+4. **Today** — Sales, money spent, money in, money out, cash left, what customers owe, a 7-day chart, recent records, and optional monthly goals. Goal numbers are added up in the app. The model never calculates totals.
 5. **Daily note** — Pick a date. The figures are calculated first. OpenRouter may write a short note and two or three tips. Without a key, a template writes the note and says so.
 
 `/api/health` powers the corner pill: **AI ready** when `OPENROUTER_API_KEY` is set, otherwise **Demo mode**.

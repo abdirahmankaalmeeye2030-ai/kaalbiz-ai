@@ -8,12 +8,16 @@ import { Label } from "@/components/ui/label";
 import { computeTotals } from "@/lib/calculations";
 import { postJson } from "@/lib/client";
 import { formatDisplayDate, kampalaToday } from "@/lib/dates";
+import { evaluateGoals, goalSummaryLine } from "@/lib/goals";
 import { formatUgx } from "@/lib/money";
+import { useGoals } from "@/lib/use-goals";
 import { useLedger } from "@/lib/use-ledger";
 import type { SummaryResponse } from "@/lib/types";
 
 export function SummaryScreen() {
   const { entries, ready } = useLedger();
+  const { goals } = useGoals();
+  const goalLine = goals ? goalSummaryLine(evaluateGoals(goals, entries, kampalaToday())) : null;
   const [date, setDate] = useState(kampalaToday);
   const [summary, setSummary] = useState<{ signature: string; data: SummaryResponse } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +88,13 @@ export function SummaryScreen() {
           This is the open balance across all days, not only {date ? formatDisplayDate(date) : "this day"}.
         </p>
       </Card>
+
+      {goalLine ? (
+        <Card>
+          <p className="text-sm font-semibold">Goal progress</p>
+          <p className="mt-1 text-base leading-7">{goalLine}</p>
+        </Card>
+      ) : null}
 
       <Card>
         {ready && date && !written && !error ? (

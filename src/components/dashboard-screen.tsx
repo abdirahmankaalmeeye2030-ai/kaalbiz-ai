@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { DataActions } from "@/components/data-actions";
+import { GoalsCard } from "@/components/goals-card";
 import { WeekChart } from "@/components/week-chart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,12 @@ import { computeTotals, last7Days, recentTransactions } from "@/lib/calculations
 import { formatDisplayDate, kampalaToday } from "@/lib/dates";
 import { TYPE_LABELS } from "@/lib/labels";
 import { formatUgx } from "@/lib/money";
+import { useGoals } from "@/lib/use-goals";
 import { useLedger } from "@/lib/use-ledger";
 
 export function DashboardScreen() {
   const { entries, ready } = useLedger();
+  const { goals } = useGoals();
   const today = kampalaToday();
   const totals = computeTotals(entries);
   const recent = recentTransactions(entries, 5);
@@ -29,6 +32,8 @@ export function DashboardScreen() {
       </div>
 
       {!ready ? <p className="text-sm text-muted-foreground">Loading your records…</p> : null}
+
+      {ready ? <GoalsCard goals={goals} entries={entries} today={today} /> : null}
 
       {ready && entries.length === 0 ? (
         <Card>
