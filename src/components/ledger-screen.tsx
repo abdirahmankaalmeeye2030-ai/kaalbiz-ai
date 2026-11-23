@@ -7,11 +7,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addDays, formatDisplayDate, kampalaToday } from "@/lib/dates";
-import { TYPE_LABELS } from "@/lib/labels";
-import { formatUgx } from "@/lib/money";
 import { filterTransactions, sortTransactions } from "@/lib/calculations";
+import {
+  LEDGER_HEADERS,
+  ledgerFilename,
+  ledgerPaymentStatus,
+  ledgerSheetTotals,
+  ledgerToCsv,
+  ledgerToXlsx,
+  ledgerTypeLabel,
+} from "@/lib/ledger-sheet";
+import { formatUgx } from "@/lib/money";
 import { useLedger } from "@/lib/use-ledger";
-import { TRANSACTION_TYPES, type TransactionType } from "@/lib/types";
+import { TRANSACTION_TYPES, type LedgerEntry, type TransactionType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type DateFilter = "all" | "today" | "week" | "custom";
@@ -22,6 +30,8 @@ export function LedgerScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customDate, setCustomDate] = useState("");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const today = kampalaToday();
 
   const range = useMemo(() => {
@@ -32,7 +42,42 @@ export function LedgerScreen() {
   }, [customDate, dateFilter, today]);
 
   const visible = sortTransactions(filterTransactions(entries, { type, ...range }));
+  const totals = useMemo(() => ledgerSheetTotals(visible), [visible]);
   const deleting = entries.find((entry) => entry.id === pendingDelete);
+  const downloadDisabled = !ready || visible.length === 0 || exporting;
+
+  function saveFile(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadCsv() {
+    setExportError(null);
+    const csv = ledgerToCsv(visible);
+    saveFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), ledgerFilename(today, "csv"));
+  }
+
+  async function downloadExcel() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const buffer = await ledgerToXlsx(visible);
+      saveFile(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        ledgerFilename(today, "xlsx"),
+      );
+    } catch {
+      setExportError("Could not make the Excel file. Try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -49,7 +94,7 @@ export function LedgerScreen() {
         </FilterChip>
         {TRANSACTION_TYPES.map((item) => (
           <FilterChip key={item} selected={type === item} onClick={() => setType(item)}>
-            {TYPE_LABELS[item]}
+            {ledgerTypeLabel(item)}
           </FilterChip>
         ))}
       </div>
@@ -72,6 +117,29 @@ export function LedgerScreen() {
         <Input type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} aria-label="Filter by date" />
       ) : null}
 
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button type="button" className="flex-1" disabled={downloadDisabled} onClick={() => void downloadExcel()}>
+          {exporting ? "Preparing Excel…" : "Download Excel"}
+        </Button>
+        <Button type="button" variant="outline" className="flex-1" disabled={downloadDisabled} onClick={downloadCsv}>
+          Download CSV
+        </Button>
+      </div>
+      {ready && visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {entries.length === 0
+            ? "Add a record before you download."
+            : "Nothing in this view to download. Show all records, or pick another filter."}
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">The file includes only the records in this view.</p>
+      )}
+      {exportError ? (
+        <p className="text-sm text-destructive" role="alert">
+          {exportError}
+        </p>
+      ) : null}
+
       {!ready ? <p className="text-sm text-muted-foreground">Loading your records…</p> : null}
 
       {ready && visible.length === 0 ? (
@@ -86,38 +154,7 @@ export function LedgerScreen() {
         </div>
       ) : null}
 
-      {visible.length > 0 ? (
-        <ul className="space-y-3">
-          {visible.map((entry) => (
-            <li key={entry.id} className="rounded-2xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="neutral">{TYPE_LABELS[entry.type]}</Badge>
-                    {entry.isSample ? <Badge variant="sample">Sample</Badge> : null}
-                  </div>
-                  <p className="mt-2 font-semibold leading-6">{entry.description}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {[entry.counterparty, entry.category, formatDisplayDate(entry.date)]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
-                <p className="shrink-0 font-semibold">{formatUgx(entry.amount)}</p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-2 px-0 text-destructive hover:bg-transparent hover:text-destructive"
-                onClick={() => setPendingDelete(entry.id)}
-              >
-                Delete
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {visible.length > 0 ? <LedgerTable rows={visible} totals={totals} onDelete={setPendingDelete} /> : null}
 
       {ready && entries.length > 0 ? (
         <div className="border-t border-border pt-4">
@@ -142,6 +179,115 @@ export function LedgerScreen() {
           if (pendingDelete) remove(pendingDelete);
         }}
       />
+    </div>
+  );
+}
+
+function formatSheetAmount(amount: number): string {
+  const rounded = Math.round(amount);
+  const sign = rounded < 0 ? "−" : "";
+  const formatted = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+    useGrouping: true,
+  }).format(Math.abs(rounded));
+  return `${sign}${formatted}`;
+}
+
+function LedgerTable({
+  rows,
+  totals,
+  onDelete,
+}: {
+  rows: LedgerEntry[];
+  totals: { moneyIn: number; moneyOut: number; net: number };
+  onDelete: (id: string) => void;
+}) {
+  const totalLines = [
+    ["Money in", totals.moneyIn],
+    ["Money out", totals.moneyOut],
+    ["Net", totals.net],
+  ] as const;
+
+  return (
+    <div className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-card">
+      <table className="w-max min-w-full border-collapse text-sm" aria-label="Ledger">
+        <thead>
+          <tr>
+            {LEDGER_HEADERS.map((label, index) => (
+              <th
+                key={label}
+                scope="col"
+                className={cn(
+                  "sticky top-0 z-20 border border-border bg-secondary px-3 py-2 text-left font-semibold whitespace-nowrap",
+                  index === 0 && "left-0 z-30 min-w-28",
+                  index === 4 && "text-right",
+                )}
+              >
+                {label}
+              </th>
+            ))}
+            <th scope="col" className="sticky top-0 z-20 border border-border bg-secondary px-3 py-2 font-semibold">
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((entry, index) => {
+            const zebra = index % 2 === 1;
+            const fill = zebra ? "bg-[#f3ecdf]" : "bg-card";
+            return (
+              <tr key={entry.id} className={fill}>
+                <td className={cn("sticky left-0 z-10 border border-border px-3 py-2 whitespace-nowrap", fill)}>
+                  {formatDisplayDate(entry.date)}
+                </td>
+                <td className="border border-border px-3 py-2 whitespace-nowrap">{ledgerTypeLabel(entry.type)}</td>
+                <td className="border border-border px-3 py-2">
+                  <span className="font-semibold">{entry.description}</span>
+                  {entry.isSample ? (
+                    <Badge variant="sample" className="ml-2 align-middle">
+                      Sample
+                    </Badge>
+                  ) : null}
+                </td>
+                <td className="border border-border px-3 py-2 whitespace-nowrap">
+                  {entry.counterparty?.trim() || "—"}
+                </td>
+                <td className="border border-border px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap">
+                  {formatSheetAmount(entry.amount)}
+                </td>
+                <td className="border border-border px-3 py-2 whitespace-nowrap">
+                  {ledgerPaymentStatus(entry.type) || "—"}
+                </td>
+                <td className="border border-border px-2 py-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-transparent hover:text-destructive"
+                    onClick={() => onDelete(entry.id)}
+                  >
+                    Delete
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          {totalLines.map(([label, amount]) => (
+            <tr key={label} className="font-semibold">
+              <td className="sticky left-0 z-10 border border-border bg-secondary px-3 py-2">{label}</td>
+              <td className="border border-border bg-secondary px-3 py-2" colSpan={3}>
+                {label === "Net" ? "Money in minus money out" : ""}
+              </td>
+              <td className="border border-border bg-secondary px-3 py-2 text-right tabular-nums">
+                {formatSheetAmount(amount)}
+              </td>
+              <td className="border border-border bg-secondary px-3 py-2" colSpan={2} />
+            </tr>
+          ))}
+        </tfoot>
+      </table>
     </div>
   );
 }
