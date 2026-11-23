@@ -254,6 +254,80 @@ export function suggestGoals(entries: LedgerEntry[], startDate: string, endDate:
   };
 }
 
+export function parseUgxInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (!digits || digits !== trimmed.replace(/[\s,._]/g, "")) return null;
+  const value = Number(digits);
+  if (!Number.isFinite(value) || value <= 0 || value > 2_000_000_000) return null;
+  return Math.round(value);
+}
+
+export interface GoalFieldErrors {
+  startDate?: string;
+  endDate?: string;
+  sellAtLeast?: string;
+  spendAtMost?: string;
+  oweLessThan?: string;
+  paySuppliers?: string;
+  form?: string;
+}
+
+export function goalSettingsFromFields(fields: {
+  startDate: string;
+  endDate: string;
+  sellAtLeast: string;
+  spendAtMost: string;
+  oweLessThan: string;
+  paySuppliers: string;
+}): { settings: GoalSettings | null; errors: GoalFieldErrors } {
+  const errors: GoalFieldErrors = {};
+  if (!isIsoDate(fields.startDate)) errors.startDate = "Choose a start date.";
+  if (!isIsoDate(fields.endDate)) errors.endDate = "Choose an end date.";
+  if (!errors.startDate && !errors.endDate && fields.endDate < fields.startDate) {
+    errors.endDate = "The end date has to be on or after the start date.";
+  }
+
+  const sellAtLeast = readAmount(fields.sellAtLeast, "sellAtLeast", errors);
+  const spendAtMost = readAmount(fields.spendAtMost, "spendAtMost", errors);
+  const oweLessThan = readAmount(fields.oweLessThan, "oweLessThan", errors);
+  const paySuppliers = readAmount(fields.paySuppliers, "paySuppliers", errors);
+
+  if (!errors.form && sellAtLeast == null && spendAtMost == null && oweLessThan == null && paySuppliers == null) {
+    if (!errors.sellAtLeast && !errors.spendAtMost && !errors.oweLessThan && !errors.paySuppliers) {
+      errors.form = "Enter at least one amount.";
+    }
+  }
+
+  if (Object.keys(errors).length > 0 || !isIsoDate(fields.startDate) || !isIsoDate(fields.endDate)) {
+    return { settings: null, errors };
+  }
+
+  return {
+    settings: {
+      startDate: fields.startDate,
+      endDate: fields.endDate,
+      sellAtLeast,
+      spendAtMost,
+      oweLessThan,
+      paySuppliers,
+    },
+    errors,
+  };
+}
+
+function readAmount(
+  raw: string,
+  key: "sellAtLeast" | "spendAtMost" | "oweLessThan" | "paySuppliers",
+  errors: GoalFieldErrors,
+): number | null {
+  if (!raw.trim()) return null;
+  const parsed = parseUgxInput(raw);
+  if (parsed == null) errors[key] = "Enter a whole number of shillings, like 500,000.";
+  return parsed;
+}
+
 export function parseGoalSettings(value: unknown): GoalSettings | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<GoalSettings>;

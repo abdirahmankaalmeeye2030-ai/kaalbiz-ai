@@ -1,14 +1,15 @@
 "use client";
 
+import { TrendingUp, Truck, Users, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { postJson } from "@/lib/client";
-import { formatDisplayDate } from "@/lib/dates";
 import { formatUgx } from "@/lib/money";
-import { evaluateGoals, type GoalProgress, type GoalSettings, type GoalStatus } from "@/lib/goals";
+import { GOALS_SAVED_FLAG } from "@/lib/goals-storage";
+import { evaluateGoals, goalWindow, type GoalKind, type GoalProgress, type GoalSettings, type GoalStatus } from "@/lib/goals";
 import type { GoalTipsRequest } from "@/lib/goal-tips";
 import type { LedgerEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,13 @@ interface GoalTipsResponse {
   message?: string;
 }
 
+const GOAL_META: Record<GoalKind, { label: string; icon: LucideIcon }> = {
+  sales: { label: "Sales", icon: TrendingUp },
+  spend: { label: "Spending", icon: Wallet },
+  debt: { label: "Customers owe", icon: Users },
+  suppliers: { label: "Suppliers paid", icon: Truck },
+};
+
 export function GoalsCard({
   goals,
   entries,
@@ -31,9 +39,15 @@ export function GoalsCard({
   today: string;
 }) {
   const progress = goals ? evaluateGoals(goals, entries, today) : [];
+  const saved = useSyncExternalStore(subscribeSaved, readSaved, () => false);
   const [tips, setTips] = useState<GoalTipsResponse | null>(null);
   const [tipsError, setTipsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (window.location.hash !== "#goals") return;
+    document.getElementById("goals")?.scrollIntoView({ block: "start" });
+  }, []);
 
   async function loadTips() {
     if (!goals || progress.length === 0) return;
@@ -50,59 +64,46 @@ export function GoalsCard({
     }
   }
 
+  const period = goals ? periodLabel(goals, progress, today) : null;
+
   return (
-    <Card>
+    <Card id="goals" className="scroll-mt-20">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">Goals</h2>
-          {goals ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatRange(goals.startDate, goals.endDate)}
-            </p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold">Goals</h2>
+            {saved ? <span className="text-sm font-semibold text-primary">Saved</span> : null}
+          </div>
+          {period ? (
+            <p className="mt-1 text-xs text-muted-foreground">{period}</p>
           ) : (
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Set a sales, spending, debt, or supplier goal for this month.
-            </p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">Set a goal for this month.</p>
           )}
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/goals">{goals && progress.length > 0 ? "Change" : "Set goals"}</Link>
-        </Button>
+        <Link href="/goals" className="shrink-0 text-sm font-semibold text-primary">
+          {progress.length > 0 ? "Change" : "Set goals"}
+        </Link>
       </div>
 
       {progress.length > 0 ? (
-        <ul className="mt-4 space-y-4">
+        <ul className="mt-4 grid grid-cols-2 gap-4">
           {progress.map((item) => (
-            <li key={item.kind}>
-              <p className={cn("text-sm font-semibold leading-5", statusText(item.status))}>{item.line}</p>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
-                <div
-                  className={cn("h-full rounded-full", statusBar(item.status))}
-                  style={{ width: `${Math.min(100, Math.max(0, item.percent))}%` }}
-                />
-              </div>
-              {item.collectedThisPeriod != null ? (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Collected this period: {formatUgx(item.collectedThisPeriod)}
-                </p>
-              ) : null}
-              {item.hint ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{item.hint}</p> : null}
-            </li>
+            <GoalTile key={item.kind} item={item} />
           ))}
         </ul>
       ) : null}
 
       {progress.length > 0 ? (
-        <div className="mt-4 space-y-3">
-          <Button type="button" className="w-full" onClick={() => void loadTips()} disabled={loading}>
+        <div className="mt-4">
+          <Button type="button" variant="outline" size="sm" onClick={() => void loadTips()} disabled={loading}>
             {loading ? "Getting tips…" : "Get tips"}
           </Button>
-          {tipsError ? <p className="text-sm text-destructive">{tipsError}</p> : null}
+          {tipsError ? <p className="mt-2 text-sm text-destructive">{tipsError}</p> : null}
           {tips ? (
-            <div className="space-y-2">
+            <div className="mt-3 space-y-2">
               <Badge variant={tips.source === "ai" ? "default" : "warning"}>{tips.badge}</Badge>
-              {tips.message ? <p className="text-sm text-muted-foreground">{tips.message}</p> : null}
-              <ul className="list-disc space-y-2 pl-5 text-sm leading-6">
+              {tips.message ? <p className="text-xs leading-5 text-muted-foreground">{tips.message}</p> : null}
+              <ul className="list-disc space-y-1 pl-5 text-sm leading-6">
                 {tips.tips.map((tip) => (
                   <li key={tip}>{tip}</li>
                 ))}
@@ -113,6 +114,112 @@ export function GoalsCard({
       ) : null}
     </Card>
   );
+}
+
+function GoalTile({ item }: { item: GoalProgress }) {
+  const meta = GOAL_META[item.kind];
+  const Icon = meta.icon;
+  const full = `${formatUgx(item.progress)} of ${formatUgx(item.target)}`;
+  return (
+    <li className="min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="truncate text-sm font-semibold">{meta.label}</span>
+        </span>
+      </div>
+      <span className={cn("mt-2 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", statusPill(item.status))}>
+        {statusName(item.status)}
+      </span>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={item.target}
+        aria-valuenow={Math.min(item.target, item.progress)}
+        aria-label={`${meta.label}, ${statusName(item.status)}, ${full}`}
+      >
+        <div
+          className={cn("h-full rounded-full", statusBar(item.status))}
+          style={{ width: `${Math.min(100, Math.max(0, item.percent))}%` }}
+        />
+      </div>
+      <p className="mt-1.5 text-xs tabular-nums text-muted-foreground" aria-label={full}>
+        <span aria-hidden="true">
+          {compactAmount(item.progress)} of {compactAmount(item.target)}
+        </span>
+      </p>
+      {item.hint ? <p className="mt-1 text-xs leading-4 text-muted-foreground">{item.hint}</p> : null}
+      {item.collectedThisPeriod != null && item.collectedThisPeriod > 0 ? (
+        <p className="mt-1 text-xs text-muted-foreground">Collected {formatUgx(item.collectedThisPeriod)}</p>
+      ) : null}
+    </li>
+  );
+}
+
+function periodLabel(goals: GoalSettings, progress: GoalProgress[], today: string): string {
+  const dates = `${shortDate(goals.startDate)} – ${shortDate(goals.endDate)}`;
+  const days = progress[0]?.daysLeftLabel ?? daysLeftText(goalWindow(goals.startDate, goals.endDate, today).daysLeft);
+  return `${dates} · ${days}`;
+}
+
+function shortDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))));
+}
+
+function daysLeftText(daysLeft: number): string {
+  if (daysLeft === 1) return "1 day left";
+  if (daysLeft > 1) return `${daysLeft} days left`;
+  return "last day";
+}
+
+function compactAmount(amount: number): string {
+  const rounded = Math.round(amount);
+  const sign = rounded < 0 ? "−" : "";
+  const abs = Math.abs(rounded);
+  if (abs >= 1_000_000) return `${sign}${trimNumber(abs / 1_000_000)}M`;
+  if (abs >= 10_000) return `${sign}${trimNumber(abs / 1_000)}K`;
+  return `${sign}${new Intl.NumberFormat("en-US").format(abs)}`;
+}
+
+function trimNumber(value: number): string {
+  return value >= 10 || Number.isInteger(value) ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function statusName(status: GoalStatus): string {
+  if (status === "over") return "Over limit";
+  if (status === "behind") return "Behind";
+  return "On track";
+}
+
+function statusPill(status: GoalStatus): string {
+  if (status === "over") return "bg-destructive/10 text-destructive";
+  if (status === "behind") return "bg-warning-bg text-warning";
+  return "bg-primary/10 text-primary";
+}
+
+function statusBar(status: GoalStatus): string {
+  if (status === "over") return "bg-destructive";
+  if (status === "behind") return "bg-warning";
+  return "bg-primary";
+}
+
+function readSaved() {
+  return sessionStorage.getItem(GOALS_SAVED_FLAG) === "1";
+}
+
+function subscribeSaved(onChange: () => void) {
+  const timer = window.setTimeout(() => {
+    sessionStorage.removeItem(GOALS_SAVED_FLAG);
+    onChange();
+  }, 4000);
+  return () => window.clearTimeout(timer);
 }
 
 function toTipsRequest(goals: GoalSettings, progress: GoalProgress[]): GoalTipsRequest {
@@ -136,20 +243,4 @@ function toTipsRequest(goals: GoalSettings, progress: GoalProgress[]): GoalTipsR
       : null,
     suppliers: suppliers ? { progress: suppliers.progress, target: suppliers.target } : null,
   };
-}
-
-function formatRange(start: string, end: string): string {
-  return `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
-}
-
-function statusText(status: GoalStatus): string {
-  if (status === "over") return "text-destructive";
-  if (status === "behind") return "text-warning";
-  return "text-foreground";
-}
-
-function statusBar(status: GoalStatus): string {
-  if (status === "over") return "bg-destructive";
-  if (status === "behind") return "bg-warning";
-  return "bg-primary";
 }

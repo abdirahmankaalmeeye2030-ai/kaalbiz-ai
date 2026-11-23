@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateGoals,
   expectedByPace,
+  goalSettingsFromFields,
   goalSummaryLine,
   goalWindow,
+  parseGoalSettings,
+  parseUgxInput,
   roundDailyPace,
   suggestGoals,
   type GoalSettings,
 } from "./goals";
+import { parseStoredGoals } from "./goals-storage";
 import type { LedgerEntry, TransactionType } from "./types";
 
 function entry(partial: {
@@ -131,6 +135,60 @@ describe("pace and status", () => {
     );
     expect(over?.status).toBe("over");
     expect(over?.hint).toContain("Collect about UGX 20,000");
+  });
+});
+
+describe("goal amount parsing and save", () => {
+  it("reads formatted shilling amounts", () => {
+    expect(parseUgxInput("500,000")).toBe(500_000);
+    expect(parseUgxInput("100 000")).toBe(100_000);
+    expect(parseUgxInput("600.000")).toBe(600_000);
+    expect(parseUgxInput("")).toBeNull();
+    expect(parseUgxInput("0")).toBeNull();
+    expect(parseUgxInput("12 shillings")).toBeNull();
+  });
+
+  it("saves the visible fields and rejects an empty or invalid form", () => {
+    const saved = goalSettingsFromFields({
+      startDate: "2026-11-24",
+      endDate: "2026-12-24",
+      sellAtLeast: "",
+      spendAtMost: "500,000",
+      oweLessThan: "100,000",
+      paySuppliers: "600,000",
+    });
+    expect(saved.errors).toEqual({});
+    expect(saved.settings).toEqual({
+      startDate: "2026-11-24",
+      endDate: "2026-12-24",
+      sellAtLeast: null,
+      spendAtMost: 500_000,
+      oweLessThan: 100_000,
+      paySuppliers: 600_000,
+    });
+    expect(parseStoredGoals(JSON.stringify(saved.settings))).toEqual(saved.settings);
+    expect(parseGoalSettings(JSON.parse(JSON.stringify(saved.settings)))).toEqual(saved.settings);
+
+    expect(
+      goalSettingsFromFields({
+        startDate: "2026-11-24",
+        endDate: "2026-12-24",
+        sellAtLeast: "",
+        spendAtMost: "",
+        oweLessThan: "",
+        paySuppliers: "",
+      }).errors.form,
+    ).toBe("Enter at least one amount.");
+    expect(
+      goalSettingsFromFields({
+        startDate: "",
+        endDate: "2026-11-01",
+        sellAtLeast: "",
+        spendAtMost: "500,000",
+        oweLessThan: "",
+        paySuppliers: "",
+      }).errors.startDate,
+    ).toBe("Choose a start date.");
   });
 });
 

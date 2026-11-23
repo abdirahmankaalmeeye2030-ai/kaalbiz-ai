@@ -2,6 +2,7 @@ import { parseGoalSettings, type GoalSettings } from "./goals";
 
 export const GOALS_KEY = "kaalbiz.goals.v1";
 export const GOALS_EVENT = "kaalbiz:goals";
+export const GOALS_SAVED_FLAG = "kaalbiz.goals.justSaved";
 
 export function parseStoredGoals(raw: string | null): GoalSettings | null {
   if (!raw) return null;
