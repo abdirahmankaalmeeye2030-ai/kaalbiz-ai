@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { entryWriteSchema, magicLinkSchema } from "./cloud-schema";
-import { activeRecords, applyRemote, changesToPush, mergeRecords, migrateLocalRows, queueChange, type SyncRecord } from "./sync";
+import { activeRecords, applyRemote, changesToPush, isCloudId, mergeRecords, migrateLocalRows, queueChange, type SyncRecord } from "./sync";
 
 interface Row extends SyncRecord {
   name: string;
@@ -69,6 +69,13 @@ describe("local record migration", () => {
     expect(queued[0]?.record.updatedAt).toBe("2026-11-20T08:00:00.000Z");
     expect(queued[0]?.record.deletedAt).toBeNull();
     expect(queued[0]?.record.amount).toBe(20000);
+  });
+});
+
+describe("cloud ids", () => {
+  it("accepts a real record id and skips a sample id", () => {
+    expect(isCloudId("8d8b6c1e-4b1a-4e2a-9c1a-0b1c2d3e4f50")).toBe(true);
+    expect(isCloudId("sample-sugar")).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabasePublicConfig } from "@/lib/cloud-config";
+import { contentSecurityPolicy } from "@/lib/security-headers";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -29,19 +30,7 @@ export const config = {
 };
 
 function applySecurityHeaders(response: NextResponse) {
-  const scriptSrc = process.env.NODE_ENV === "production" ? "'self' 'unsafe-inline'" : "'self' 'unsafe-inline' 'unsafe-eval'";
-  const csp = [
-    "default-src 'self'",
-    `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://openrouter.ai",
-    "media-src 'self' blob:",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join("; ");
+  const csp = contentSecurityPolicy(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NODE_ENV === "production");
   response.headers.set("Content-Security-Policy", csp);
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");

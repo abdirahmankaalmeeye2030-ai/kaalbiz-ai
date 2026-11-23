@@ -22,6 +22,8 @@ Do not put the `service_role` key in the app, in `NEXT_PUBLIC_` variables, or in
 
 The migration creates `businesses`, `business_members`, `entries`, `contacts`, `staff`, and `goals`. Row level security lets a person read and write only a business they belong to. Only an owner can change members or delete the business.
 
+If the project was created with **Grant API access to new tables automatically** turned off, the first migration's policies are not enough. Sign-in still works, but reading `business_members` returns permission denied (`42501`) and the header says **Backup failed, retrying**. Paste and run `supabase/migrations/20261125000000_api_grants.sql` as well. It grants `authenticated` select, insert, update, and delete on those tables, and tells the API to reload.
+
 ## 3. Turn on email login
 
 1. Open **Authentication → Providers** and enable **Email**.
@@ -78,3 +80,5 @@ The connected project URL is `https://fjllotlodzwjmfrkmjbx.supabase.co`. Do not 
 - After that, the header shows **Backed up ✓**, **Syncing…**, or **Offline, will sync later**, plus the last synced time.
 
 Login emails are limited to 5 tries each 10 minutes per address path on one server instance. Supabase has its own limit as well.
+
+The round picture at the bottom left is stored on the phone only. KaalBiz does not upload it to Supabase Storage.

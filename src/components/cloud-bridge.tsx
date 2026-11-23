@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { publishSyncStatus } from "@/components/account-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { entryWriteSchema } from "@/lib/cloud-schema";
 import { isCloudConfigured } from "@/lib/cloud-config";
 import { LEDGER_EVENT, LEDGER_KEY, parseLedger, saveLedger } from "@/lib/storage";
+import { isPermissionDenied } from "@/lib/sync-status";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
-import { queueChange, type QueuedChange, type SyncRecord } from "@/lib/sync";
+import { isCloudId, queueChange, type QueuedChange, type SyncRecord } from "@/lib/sync";
 
 const QUEUE_KEY = "kaalbiz.sync.queue.v1";
 const BUSINESS_KEY = "kaalbiz.businessId";
@@ -20,6 +22,7 @@ export function CloudBridge() {
   const [needShop, setNeedShop] = useState(false);
   const [needUpload, setNeedUpload] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!cloud) {
@@ -30,49 +33,87 @@ export function CloudBridge() {
     if (!client) return;
 
     let stopped = false;
+    let retryTimer = 0;
+    function scheduleRetry() {
+      window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(() => {
+        if (!stopped) void refresh();
+      }, 15000);
+    }
     async function refresh() {
-      if (!client) return;
+      if (!client || stopped) return;
       if (!navigator.onLine) {
         publishSyncStatus({ phase: "offline", lastSyncedAt: readSynced(), email: null });
         return;
       }
-      const { data } = await client.auth.getUser();
-      if (!data.user) {
-        publishSyncStatus({ phase: "signed-out", lastSyncedAt: null, email: null });
+      try {
+        const { data, error: userError } = await client.auth.getUser();
+        if (userError || !data.user) {
+          if (userError && navigator.onLine) {
+            noteFailure(userError, null);
+            scheduleRetry();
+          } else {
+            publishSyncStatus({ phase: "signed-out", lastSyncedAt: null, email: null });
+            setNeedShop(false);
+          }
+          return;
+        }
+        const email = data.user.email ?? null;
+        const { data: membership, error: memberError } = await client
+          .from("business_members")
+          .select("business_id")
+          .limit(1);
+        if (memberError) {
+          noteFailure(memberError, email);
+          scheduleRetry();
+          return;
+        }
+        setBackupNote(null);
+        const businessId = membership?.[0]?.business_id as string | undefined;
+        if (!businessId) {
+          setNeedShop(true);
+          publishSyncStatus({ phase: "needs-shop", lastSyncedAt: null, email });
+          return;
+        }
+        window.localStorage.setItem(BUSINESS_KEY, businessId);
         setNeedShop(false);
-        return;
+        const migration = window.localStorage.getItem(MIGRATION_KEY);
+        if (!migration && parseLedger(window.localStorage.getItem(LEDGER_KEY)).length > 0) {
+          setNeedUpload(true);
+        }
+        const result = await runSync(businessId, email);
+        if (result.status === "failed") {
+          noteFailure(result.error, email);
+          scheduleRetry();
+        } else if (result.status === "ok") {
+          setBackupNote(null);
+        }
+      } catch (err) {
+        noteFailure(err instanceof Error ? { message: err.message } : null, null);
+        scheduleRetry();
       }
-      const { data: membership, error: memberError } = await client
-        .from("business_members")
-        .select("business_id")
-        .limit(1);
-      if (memberError) {
-        publishSyncStatus({ phase: "offline", lastSyncedAt: readSynced(), email: data.user.email ?? null });
-        setError("Could not reach cloud backup. Your records stay on this phone.");
-        return;
-      }
-      const businessId = membership?.[0]?.business_id as string | undefined;
-      if (!businessId) {
-        setNeedShop(true);
-        publishSyncStatus({ phase: "signed-out", lastSyncedAt: null, email: data.user.email ?? null });
-        return;
-      }
-      window.localStorage.setItem(BUSINESS_KEY, businessId);
-      setNeedShop(false);
-      const migration = window.localStorage.getItem(MIGRATION_KEY);
-      if (!migration && parseLedger(window.localStorage.getItem(LEDGER_KEY)).length > 0) {
-        setNeedUpload(true);
-      }
-      await runSync(businessId, data.user.email ?? null);
+    }
+    function noteFailure(error: { code?: string; message?: string } | null, email: string | null) {
+      publishSyncStatus({ phase: "failed", lastSyncedAt: readSynced(), email });
+      setBackupNote(
+        isPermissionDenied(error)
+          ? "Backup failed, retrying. The database refused access. Paste the grants SQL, then reopen this page. Your records stay on this phone."
+          : "Backup failed, retrying. Your records stay on this phone.",
+      );
     }
 
     function onLocalChange() {
       if (!navigator.onLine) {
         publishSyncStatus({ phase: "offline", lastSyncedAt: readSynced(), email: null });
+        setBackupNote(null);
         return;
       }
       const businessId = window.localStorage.getItem(BUSINESS_KEY);
-      if (businessId) void runSync(businessId, null);
+      if (!businessId) return;
+      void runSync(businessId, null).then((result) => {
+        if (result.status === "failed") noteFailure(result.error, null);
+        if (result.status === "ok") setBackupNote(null);
+      });
     }
 
     void refresh();
@@ -82,11 +123,11 @@ export function CloudBridge() {
     window.addEventListener(LEDGER_EVENT, onLocalChange);
     return () => {
       stopped = true;
+      window.clearTimeout(retryTimer);
       window.removeEventListener("focus", refresh);
       window.removeEventListener("online", refresh);
       window.removeEventListener("offline", onLocalChange);
       window.removeEventListener(LEDGER_EVENT, onLocalChange);
-      void stopped;
     };
   }, [cloud]);
 
@@ -107,6 +148,11 @@ export function CloudBridge() {
 
   return (
     <>
+      {backupNote ? (
+        <div className="border-b border-border bg-card px-4 py-3">
+          <p className="text-sm text-destructive">{backupNote}</p>
+        </div>
+      ) : null}
       {needShop ? (
         <div className="border-b border-border bg-card px-4 py-4">
           <p className="font-semibold">Name your shop</p>
@@ -152,12 +198,17 @@ export function CloudBridge() {
   );
 }
 
-async function runSync(businessId: string, email: string | null) {
+async function runSync(
+  businessId: string,
+  email: string | null,
+): Promise<
+  { status: "ok" } | { status: "offline" } | { status: "failed"; error: { code?: string; message?: string } | null }
+> {
   const supabase = createBrowserSupabase();
-  if (!supabase) return;
+  if (!supabase) return { status: "failed", error: { message: "Cloud backup is off." } };
   if (!navigator.onLine) {
     publishSyncStatus({ phase: "offline", lastSyncedAt: readSynced(), email });
-    return;
+    return { status: "offline" };
   }
   publishSyncStatus({ phase: "syncing", lastSyncedAt: readSynced(), email });
   try {
@@ -200,8 +251,9 @@ async function runSync(businessId: string, email: string | null) {
         updated_at: entry.updatedAt ?? now,
         deleted_at: entry.deletedAt ?? null,
       }));
-      if (rows.length > 0) {
-        const { error } = await supabase.from("entries").upsert(rows);
+      const ready = rows.filter((row) => isCloudId(row.id) && entryWriteSchema.safeParse(row).success);
+      if (ready.length > 0) {
+        const { error } = await supabase.from("entries").upsert(ready);
         if (error) throw error;
       }
       window.localStorage.setItem(QUEUE_KEY, "[]");
@@ -216,8 +268,11 @@ async function runSync(businessId: string, email: string | null) {
     const synced = new Date().toISOString();
     window.localStorage.setItem(SYNCED_KEY, synced);
     publishSyncStatus({ phase: "backed-up", lastSyncedAt: synced, email });
-  } catch {
-    publishSyncStatus({ phase: "offline", lastSyncedAt: readSynced(), email });
+    return { status: "ok" };
+  } catch (err) {
+    const error = err && typeof err === "object" ? (err as { code?: string; message?: string }) : null;
+    publishSyncStatus({ phase: "failed", lastSyncedAt: readSynced(), email });
+    return { status: "failed", error };
   }
 }
 

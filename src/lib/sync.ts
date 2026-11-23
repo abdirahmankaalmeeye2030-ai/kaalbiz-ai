@@ -47,6 +47,12 @@ export function changesToPush<T extends SyncRecord>(shadow: T[], current: T[], t
   return changes;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isCloudId(id: string): boolean {
+  return UUID.test(id);
+}
+
 export function migrateLocalRows<T extends { id: string; createdAt: string; updatedAt?: string | null; deletedAt?: string | null }>(
   rows: T[],
   table: string,

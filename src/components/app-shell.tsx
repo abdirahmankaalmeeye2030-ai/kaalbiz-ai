@@ -48,8 +48,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-dvh bg-shell">
-      <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col bg-background md:max-w-3xl lg:max-w-none lg:flex-row">
+    <div className="h-dvh overflow-hidden bg-shell">
+      <div className="mx-auto flex h-dvh w-full max-w-lg flex-col bg-background md:max-w-3xl lg:max-w-none lg:flex-row">
         <aside className="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-border lg:bg-card lg:px-4 lg:py-6">
           <Brand />
           <ul className="mt-8 space-y-1">
@@ -61,13 +61,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <AccountMenu layout="side" />
           </div>
         </aside>
-        <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
+        <div className="flex h-dvh min-h-0 min-w-0 flex-1 flex-col">
+          <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
             <div className="lg:hidden">
               <Brand />
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <AccountMenu />
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -87,16 +86,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </ul>
           </nav>
           <CloudBridge />
-          <main className="flex-1 px-4 pb-28 pt-5 md:pb-10 lg:px-8 lg:pt-8">
+          <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-8 lg:py-8">
             <div className={cn("mx-auto w-full", wide ? "max-w-6xl" : "max-w-lg md:max-w-3xl")}>{children}</div>
           </main>
-          <nav className="fixed bottom-0 left-1/2 z-30 w-full max-w-lg -translate-x-1/2 border-t border-border bg-card/95 backdrop-blur md:hidden">
-            <ul className="grid grid-cols-4">
-              {LINKS.map((link) => (
-                <NavItem key={link.href} link={link} pathname={pathname} layout="bottom" />
-              ))}
-            </ul>
-          </nav>
+          <footer className="shrink-0 border-t border-border bg-card lg:hidden">
+            <div className="px-3 py-2">
+              <AccountMenu layout="dock" />
+            </div>
+            <nav className="md:hidden">
+              <ul className="grid grid-cols-4">
+                {LINKS.map((link) => (
+                  <NavItem key={link.href} link={link} pathname={pathname} layout="bottom" />
+                ))}
+              </ul>
+            </nav>
+          </footer>
         </div>
       </div>
     </div>

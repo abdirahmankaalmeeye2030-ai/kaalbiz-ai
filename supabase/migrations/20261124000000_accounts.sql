@@ -203,3 +203,14 @@ create policy goals_all on public.goals
   for all to authenticated
   using (public.is_business_member(business_id))
   with check (public.is_business_member(business_id));
+
+grant usage on schema public to authenticated;
+
+grant select, insert, update, delete on table
+  public.businesses,
+  public.business_members,
+  public.entries,
+  public.contacts,
+  public.staff,
+  public.goals
+to authenticated;
