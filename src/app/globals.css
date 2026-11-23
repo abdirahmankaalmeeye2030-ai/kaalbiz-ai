@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
   --background: #f6f1e7;
   --foreground: #1c1915;
   --card: #fffdf8;
@@ -20,6 +23,35 @@
   --ring: #0e6b4c;
   --warning: #8a5a00;
   --warning-bg: #fff4d8;
+  --zebra: #f3ecdf;
+  --shell: #e7e0d2;
+  --chart-out: #8a5a00;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #16130f;
+  --foreground: #f6f1e7;
+  --card: #241f19;
+  --card-foreground: #f6f1e7;
+  --primary: #3cba86;
+  --primary-foreground: #062117;
+  --secondary: #332c24;
+  --secondary-foreground: #f6f1e7;
+  --muted: #2b261f;
+  --muted-foreground: #d4c7b4;
+  --accent: #332c24;
+  --accent-foreground: #f6f1e7;
+  --destructive: #f0b4b4;
+  --destructive-foreground: #2a1010;
+  --border: #4d4336;
+  --input: #4d4336;
+  --ring: #3cba86;
+  --warning: #f0c36a;
+  --warning-bg: #3d3014;
+  --zebra: #2c261f;
+  --shell: #0e0c0a;
+  --chart-out: #f0c36a;
 }
 
 @theme inline {
@@ -42,6 +74,9 @@
   --color-ring: var(--ring);
   --color-warning: var(--warning);
   --color-warning-bg: var(--warning-bg);
+  --color-zebra: var(--zebra);
+  --color-shell: var(--shell);
+  --color-chart-out: var(--chart-out);
   --font-sans: var(--font-source);
   --font-serif: var(--font-fraunces);
 }

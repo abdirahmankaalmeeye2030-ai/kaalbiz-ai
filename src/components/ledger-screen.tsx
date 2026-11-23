@@ -98,6 +98,8 @@ export function LedgerScreen() {
         </p>
       </div>
 
+      <div className="space-y-5 lg:flex lg:items-end lg:justify-between lg:gap-6 lg:space-y-0">
+      <div className="min-w-0 flex-1 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
         {(
@@ -146,14 +148,16 @@ export function LedgerScreen() {
       {dateFilter === "custom" ? (
         <Input type="date" value={customDate} onChange={(event) => setCustomDate(event.target.value)} aria-label="Filter by date" />
       ) : null}
+      </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2 sm:flex-row lg:w-80 lg:shrink-0">
         <Button type="button" className="flex-1" disabled={downloadDisabled} onClick={() => void downloadExcel()}>
           {exporting ? "Preparing Excel…" : "Download Excel"}
         </Button>
         <Button type="button" variant="outline" className="flex-1" disabled={downloadDisabled} onClick={downloadCsv}>
           Download CSV
         </Button>
+      </div>
       </div>
       {ready && visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -257,8 +261,8 @@ function LedgerTable({
   ] as const;
 
   return (
-    <div className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-card">
-      <table className="w-max min-w-full border-collapse text-sm" aria-label="Ledger">
+    <div className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-card lg:max-h-none lg:overflow-visible">
+      <table className="w-max min-w-full border-collapse text-sm lg:w-full" aria-label="Ledger">
         <thead>
           <tr>
             {LEDGER_HEADERS.map((label, index) => (
@@ -294,7 +298,7 @@ function LedgerTable({
           ) : null}
           {rows.map((entry, index) => {
             const zebra = index % 2 === 1;
-            const fill = zebra ? "bg-[#f3ecdf]" : "bg-card";
+            const fill = zebra ? "bg-zebra" : "bg-card";
             return (
               <tr key={entry.id} className={fill}>
                 <td className={cn("sticky left-0 z-10 border border-border px-3 py-2 whitespace-nowrap", fill)}>

@@ -28,7 +28,7 @@ export function WeekChart({ days }: { days: DayBucket[] }) {
                 width={11}
                 height={Math.max(salesH, 0)}
                 rx={2}
-                fill="#0e6b4c"
+                className="fill-primary"
               />
               <rect
                 x={x + 22}
@@ -36,14 +36,14 @@ export function WeekChart({ days }: { days: DayBucket[] }) {
                 width={11}
                 height={Math.max(outH, 0)}
                 rx={2}
-                fill="#c4a574"
+                className="fill-chart-out"
               />
               <text
                 x={x + slot / 2}
                 y={height + 16}
                 textAnchor="middle"
+                className="fill-muted-foreground"
                 fontSize="11"
-                fill="#5e584e"
               >
                 {day.label}
               </text>
@@ -56,7 +56,7 @@ export function WeekChart({ days }: { days: DayBucket[] }) {
           <i className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" /> Sales
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <i className="inline-block h-2.5 w-2.5 rounded-sm bg-[#c4a574]" /> Money out
+          <i className="inline-block h-2.5 w-2.5 rounded-sm bg-chart-out" /> Money out
         </span>
       </div>
       {empty ? (

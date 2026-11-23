@@ -26,10 +26,15 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const themeScript = `(function(){try{var stored=localStorage.getItem("kaalbiz.theme");var dark=stored==="dark"||(stored!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${sourceSans.variable} ${fraunces.variable} h-full antialiased`}>
-      <body className="min-h-full">
+    <html lang="en" suppressHydrationWarning className={`${sourceSans.variable} ${fraunces.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="min-h-full bg-background text-foreground">
         <Suspense fallback={<div className="min-h-dvh bg-background" />}>
           <AppShell>{children}</AppShell>
         </Suspense>

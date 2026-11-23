@@ -43,7 +43,7 @@ export function DraftCard({
     <article
       className={
         low
-          ? "rounded-2xl border-2 border-[#e2b15c] bg-warning-bg/40 p-4"
+          ? "rounded-2xl border-2 border-warning bg-warning-bg/40 p-4"
           : "rounded-2xl border border-border bg-card p-4"
       }
     >

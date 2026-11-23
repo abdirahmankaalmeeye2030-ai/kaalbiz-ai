@@ -35,7 +35,7 @@ export function DashboardScreen() {
 
       {!ready ? <p className="text-sm text-muted-foreground">Loading your records…</p> : null}
 
-      {ready ? <GoalsCard goals={goals} entries={entries} today={today} /> : null}
+      {ready && entries.length === 0 ? <GoalsCard goals={goals} entries={entries} today={today} /> : null}
 
       {ready && entries.length === 0 ? (
         <Card>
@@ -53,7 +53,11 @@ export function DashboardScreen() {
       ) : null}
 
       {ready && entries.length > 0 ? (
-        <>
+        <div className="space-y-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+          <div className="space-y-5 lg:col-start-1 lg:row-start-1">
+            <GoalsCard goals={goals} entries={entries} today={today} />
+          </div>
+          <div className="space-y-5 lg:col-start-2 lg:row-start-1">
           <div className="grid grid-cols-2 gap-3">
             <Stat label="Sales" value={formatUgx(totals.sales)} hint="Cash from sales" />
             <Stat
@@ -122,7 +126,8 @@ export function DashboardScreen() {
           </section>
 
           <DataActions compact />
-        </>
+          </div>
+        </div>
       ) : null}
     </div>
   );

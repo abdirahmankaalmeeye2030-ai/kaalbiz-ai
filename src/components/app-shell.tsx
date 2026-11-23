@@ -1,9 +1,9 @@
 "use client";
 
-import { BookOpen, CalendarDays, LayoutDashboard, PenLine } from "lucide-react";
+import { BookOpen, CalendarDays, LayoutDashboard, Moon, PenLine, Sun, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { HealthStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +14,15 @@ const LINKS = [
   { href: "/summary", label: "Summary", icon: CalendarDays },
 ];
 
+const DESKTOP_LINKS = [...LINKS, { href: "/who-owes", label: "Who owes", icon: Users }];
+
+const THEME_KEY = "kaalbiz.theme";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const dark = useSyncExternalStore(subscribeTheme, readDark, () => false);
+  const wide = pathname === "/ledger" || pathname === "/dashboard";
 
   useEffect(() => {
     let active = true;
@@ -33,48 +39,117 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  function toggleTheme() {
+    const next = dark ? "light" : "dark";
+    document.documentElement.classList.toggle("dark", next === "dark");
+    localStorage.setItem(THEME_KEY, next);
+  }
+
   return (
-    <div className="min-h-dvh bg-[#e7e0d2]">
-      <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col bg-background">
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary font-serif text-lg text-primary-foreground">
-              K
-            </span>
-            <span>
-              <span className="block font-serif text-lg leading-none tracking-tight">KaalBiz</span>
-              <span className="mt-1 block text-xs text-muted-foreground">Kampala shop notes</span>
-            </span>
-          </Link>
-          <StatusPill health={health} />
-        </header>
-        <main className="flex-1 px-4 pb-28 pt-5">{children}</main>
-        <nav className="fixed bottom-0 left-1/2 z-30 w-full max-w-lg -translate-x-1/2 border-t border-border bg-card/95 backdrop-blur">
-          <ul className="grid grid-cols-4">
-            {LINKS.map((link) => {
-              const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-              const Icon = link.icon;
-              return (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold",
-                      active ? "text-primary" : "text-muted-foreground",
-                    )}
-                  >
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                    {link.label}
-                  </Link>
-                </li>
-              );
-            })}
+    <div className="min-h-dvh bg-shell">
+      <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col bg-background md:max-w-3xl lg:max-w-none lg:flex-row">
+        <aside className="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-border lg:bg-card lg:px-4 lg:py-6">
+          <Brand />
+          <ul className="mt-8 space-y-1">
+            {DESKTOP_LINKS.map((link) => (
+              <NavItem key={link.href} link={link} pathname={pathname} layout="side" />
+            ))}
           </ul>
-        </nav>
+        </aside>
+        <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
+            <div className="lg:hidden">
+              <Brand />
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+                className="grid h-11 w-11 place-items-center rounded-xl border border-border bg-card text-foreground"
+              >
+                {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
+              <StatusPill health={health} />
+            </div>
+          </header>
+          <nav className="hidden border-b border-border bg-card md:block lg:hidden">
+            <ul className="flex gap-1 overflow-x-auto px-4 py-2">
+              {DESKTOP_LINKS.map((link) => (
+                <NavItem key={link.href} link={link} pathname={pathname} layout="top" />
+              ))}
+            </ul>
+          </nav>
+          <main className="flex-1 px-4 pb-28 pt-5 md:pb-10 lg:px-8 lg:pt-8">
+            <div className={cn("mx-auto w-full", wide ? "max-w-6xl" : "max-w-lg md:max-w-3xl")}>{children}</div>
+          </main>
+          <nav className="fixed bottom-0 left-1/2 z-30 w-full max-w-lg -translate-x-1/2 border-t border-border bg-card/95 backdrop-blur md:hidden">
+            <ul className="grid grid-cols-4">
+              {LINKS.map((link) => (
+                <NavItem key={link.href} link={link} pathname={pathname} layout="bottom" />
+              ))}
+            </ul>
+          </nav>
+        </div>
       </div>
     </div>
   );
+}
+
+function Brand() {
+  return (
+    <Link href="/" className="flex items-center gap-2">
+      <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary font-serif text-lg text-primary-foreground">
+        K
+      </span>
+      <span>
+        <span className="block font-serif text-lg leading-none tracking-tight">KaalBiz</span>
+        <span className="mt-1 block text-xs text-muted-foreground">Kampala shop notes</span>
+      </span>
+    </Link>
+  );
+}
+
+function NavItem({
+  link,
+  pathname,
+  layout,
+}: {
+  link: (typeof DESKTOP_LINKS)[number];
+  pathname: string;
+  layout: "bottom" | "top" | "side";
+}) {
+  const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+  const Icon = link.icon;
+  return (
+    <li>
+      <Link
+        href={link.href}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "font-semibold",
+          layout === "bottom" && "flex h-16 flex-col items-center justify-center gap-1 text-xs",
+          layout === "top" && "flex h-11 items-center gap-2 rounded-xl px-3 text-sm whitespace-nowrap",
+          layout === "side" && "flex h-11 items-center gap-3 rounded-xl px-3 text-sm",
+          active ? "text-primary" : "text-muted-foreground",
+          active && layout !== "bottom" && "bg-primary/10",
+        )}
+      >
+        <Icon className="h-5 w-5" aria-hidden="true" />
+        {link.label}
+      </Link>
+    </li>
+  );
+}
+
+function readDark() {
+  return document.documentElement.classList.contains("dark");
+}
+
+function subscribeTheme(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
 }
 
 function StatusPill({ health }: { health: HealthStatus | null }) {
