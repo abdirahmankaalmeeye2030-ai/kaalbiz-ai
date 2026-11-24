@@ -11,6 +11,9 @@ export const TRANSACTION_TYPES = [
 
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
+export const PAYMENT_METHODS = ["cash", "mobile_money"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
 export const LOW_CONFIDENCE_THRESHOLD = 0.7;
 
 export interface ExtractedTransaction {
@@ -28,6 +31,7 @@ export interface ExtractedTransaction {
   location?: string | null;
   dueDate?: string | null;
   agreedAmount?: number | null;
+  paymentMethod?: PaymentMethod | null;
   isSample?: boolean;
 }
 
@@ -52,6 +56,7 @@ export interface LedgerEntry {
   location?: string | null;
   dueDate?: string | null;
   agreedAmount?: number | null;
+  paymentMethod?: PaymentMethod | null;
   source: "ai" | "demo" | "sample";
   isSample: boolean;
   createdAt: string;

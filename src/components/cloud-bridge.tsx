@@ -245,6 +245,7 @@ async function runSync(
         location: entry.location ?? null,
         due_date: entry.dueDate ?? null,
         agreed_amount: entry.agreedAmount ?? null,
+        ...(entry.paymentMethod ? { payment_method: entry.paymentMethod } : {}),
         source: entry.source,
         is_sample: entry.isSample,
         created_at: entry.createdAt,

@@ -82,3 +82,7 @@ The connected project URL is `https://fjllotlodzwjmfrkmjbx.supabase.co`. Do not 
 Login emails are limited to 5 tries each 10 minutes per address path on one server instance. Supabase has its own limit as well.
 
 The round picture at the bottom left is stored on the phone only. KaalBiz does not upload it to Supabase Storage.
+
+## Payment method column
+
+Quick form sales can store Cash or Mobile money. Paste and run `supabase/migrations/20261125010000_payment_method.sql` before those sales sync. Older rows stay blank. Records without a payment method still sync if this column is missing.

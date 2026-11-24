@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatUgx } from "@/lib/money";
 import { TYPE_LABELS } from "@/lib/labels";
+import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "@/lib/quick-form";
 import { confirmFieldErrors, normalizeUgandaPhone, suggestContact, type Contact } from "@/lib/people";
 import { LOW_CONFIDENCE_THRESHOLD, TRANSACTION_TYPES, type DraftTransaction } from "@/lib/types";
 
@@ -91,6 +92,25 @@ export function DraftCard({
             ))}
           </select>
         </div>
+        {draft.paymentMethod ? (
+          <div>
+            <Label htmlFor={`${draft.draftId}-pay`}>Payment method</Label>
+            <select
+              id={`${draft.draftId}-pay`}
+              className={`${fieldClass} mt-1`}
+              value={draft.paymentMethod}
+              onChange={(event) =>
+                onChange({ ...draft, paymentMethod: event.target.value as PaymentMethod })
+              }
+            >
+              {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((method) => (
+                <option key={method} value={method}>
+                  {PAYMENT_METHOD_LABELS[method]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor={`${draft.draftId}-amount`}>Amount (UGX)</Label>

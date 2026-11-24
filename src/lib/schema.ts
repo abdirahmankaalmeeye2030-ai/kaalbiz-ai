@@ -51,6 +51,7 @@ const extractedSchema = z.object({
   location: z.preprocess(emptyToNull, z.string().nullable().optional()),
   dueDate: z.preprocess(emptyToNull, z.string().nullable().optional()),
   agreedAmount: z.preprocess(coerceAmount, z.number().nullable().optional()),
+  paymentMethod: z.preprocess(emptyToNull, z.enum(["cash", "mobile_money"]).nullable().optional()),
 });
 
 const DEFAULT_CATEGORY: Record<TransactionType, string> = {
@@ -126,6 +127,7 @@ export function normalizeExtracted(
         parsed.data.agreedAmount && parsed.data.agreedAmount > 0
           ? Math.round(parsed.data.agreedAmount)
           : null,
+      paymentMethod: parsed.data.paymentMethod ?? null,
       confidence,
       notes: parsed.data.notes ? parsed.data.notes.slice(0, 240) : null,
     });

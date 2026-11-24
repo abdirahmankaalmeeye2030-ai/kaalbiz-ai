@@ -1,9 +1,10 @@
 "use client";
 
-import { Camera, Mic, PenLine, Upload } from "lucide-react";
+import { Camera, ClipboardList, Mic, PenLine, Upload } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { DraftCard } from "@/components/draft-card";
+import { QuickForm } from "@/components/quick-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +14,7 @@ import { kampalaToday } from "@/lib/dates";
 import { confirmFieldErrors, matchStaff, normalizeUgandaPhone } from "@/lib/people";
 import { useContacts, useStaff } from "@/lib/use-people";
 import { useLedger } from "@/lib/use-ledger";
-import type { DraftTransaction, ExtractionResponse, LedgerEntry } from "@/lib/types";
+import type { DraftTransaction, ExtractionResponse, ExtractedTransaction, LedgerEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE =
@@ -23,7 +24,7 @@ const VOICE_LIMIT_MS = 2 * 60 * 1000;
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
 const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
 
-type Mode = "text" | "voice" | "receipt";
+type Mode = "text" | "voice" | "receipt" | "quick";
 
 function formatVoiceClock(ms: number) {
   const totalSeconds = Math.min(120, Math.max(0, Math.floor(ms / 1000)));
@@ -96,6 +97,7 @@ function toEntry(draft: DraftTransaction): LedgerEntry {
     location: draft.location?.trim() || null,
     dueDate: draft.dueDate || null,
     agreedAmount: draft.agreedAmount && draft.agreedAmount > 0 ? Math.round(draft.agreedAmount) : null,
+    paymentMethod: draft.paymentMethod ?? null,
     confidence: draft.confidence,
     notes: draft.notes,
     source: draft.origin,
@@ -105,7 +107,7 @@ function toEntry(draft: DraftTransaction): LedgerEntry {
 }
 
 export function RecordScreen() {
-  const { add } = useLedger();
+  const { add, entries } = useLedger();
   const { staff, lastUsed, remember } = useStaff();
   const { contacts, upsert } = useContacts();
   const [mode, setMode] = useState<Mode>("text");
@@ -412,6 +414,19 @@ export function RecordScreen() {
     setSaved(chosen.length);
   }
 
+  function reviewQuick(transaction: ExtractedTransaction) {
+    const response: ExtractionResponse = {
+      source: "demo",
+      badge: "Quick form · not AI",
+      model: null,
+      transactions: [transaction],
+    };
+    setError(null);
+    setSaved(0);
+    setResult(response);
+    setDrafts(toDrafts(response, staff, lastUsed));
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -422,13 +437,14 @@ export function RecordScreen() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="How to tell KaalBiz">
+      <div className="grid grid-cols-4 gap-2" role="tablist" aria-label="How to tell KaalBiz">
         <ModeButton current={mode} mode="text" label="Text" icon={<PenLine className="h-4 w-4" />} onSelect={selectMode} />
         <ModeButton current={mode} mode="voice" label="Voice" icon={<Mic className="h-4 w-4" />} onSelect={selectMode} />
         <ModeButton current={mode} mode="receipt" label="Receipt" icon={<Camera className="h-4 w-4" />} onSelect={selectMode} />
+        <ModeButton current={mode} mode="quick" label="Quick form" icon={<ClipboardList className="h-4 w-4" />} onSelect={selectMode} />
       </div>
 
-      {mode !== "receipt" ? (
+      {mode === "text" || mode === "voice" ? (
         <div className="space-y-3">
           <Textarea
             value={text}
@@ -483,7 +499,9 @@ export function RecordScreen() {
             {busy ? "Reading…" : "Read this"}
           </Button>
         </div>
-      ) : (
+      ) : null}
+
+      {mode === "receipt" ? (
         <div className="space-y-3">
           <input
             ref={cameraRef}
@@ -528,7 +546,18 @@ export function RecordScreen() {
             {busy ? "Reading…" : "Read receipt"}
           </Button>
         </div>
-      )}
+      ) : null}
+
+      {mode === "quick" ? (
+        <QuickForm
+          staff={staff}
+          lastUsed={lastUsed}
+          contacts={contacts}
+          entries={entries}
+          today={kampalaToday()}
+          onReview={reviewQuick}
+        />
+      ) : null}
 
       {error ? (
         <p className="rounded-2xl bg-destructive/10 px-3 py-3 text-sm text-destructive" role="alert">
@@ -606,7 +635,7 @@ function ModeButton({
       aria-selected={selected}
       onClick={() => onSelect(mode)}
       className={cn(
-        "flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border text-sm font-semibold",
+        "flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl border px-1 py-2 text-center text-xs font-semibold leading-4",
         selected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground",
       )}
     >
