@@ -9,12 +9,17 @@ import { isCloudConfigured } from "@/lib/cloud-config";
 import { LEDGER_EVENT, LEDGER_KEY, parseLedger, saveLedger } from "@/lib/storage";
 import { isPermissionDenied } from "@/lib/sync-status";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
-import { isCloudId, queueChange, type QueuedChange, type SyncRecord } from "@/lib/sync";
+import { isCloudId, syncPlan } from "@/lib/sync";
+import { CLEAR_SYNC_KEY } from "@/lib/use-ledger";
+import type { LedgerEntry } from "@/lib/types";
 
 const QUEUE_KEY = "kaalbiz.sync.queue.v1";
 const BUSINESS_KEY = "kaalbiz.businessId";
 const MIGRATION_KEY = "kaalbiz.cloud.migration";
 const SYNCED_KEY = "kaalbiz.sync.last";
+const SHADOW_KEY = "kaalbiz.sync.shadow.v1";
+const FORCE_KEY = "kaalbiz.sync.force";
+let applyingRemote = false;
 
 export function CloudBridge() {
   const cloud = isCloudConfigured();
@@ -81,7 +86,7 @@ export function CloudBridge() {
         if (!migration && parseLedger(window.localStorage.getItem(LEDGER_KEY)).length > 0) {
           setNeedUpload(true);
         }
-        const result = await runSync(businessId, email);
+    const result = await runSync(businessId, email);
         if (result.status === "failed") {
           noteFailure(result.error, email);
           scheduleRetry();
@@ -103,6 +108,7 @@ export function CloudBridge() {
     }
 
     function onLocalChange() {
+      if (applyingRemote) return;
       if (!navigator.onLine) {
         publishSyncStatus({ phase: "offline", lastSyncedAt: readSynced(), email: null });
         setBackupNote(null);
@@ -174,6 +180,7 @@ export function CloudBridge() {
               type="button"
               onClick={() => {
                 window.localStorage.setItem(MIGRATION_KEY, "yes");
+                window.localStorage.setItem(FORCE_KEY, "1");
                 setNeedUpload(false);
                 const businessId = window.localStorage.getItem(BUSINESS_KEY);
                 if (businessId) void runSync(businessId, null);
@@ -198,7 +205,33 @@ export function CloudBridge() {
   );
 }
 
+let syncing = false;
+let rerun = false;
+
 async function runSync(
+  businessId: string,
+  email: string | null,
+): Promise<
+  { status: "ok" } | { status: "offline" } | { status: "queued" } | { status: "failed"; error: { code?: string; message?: string } | null }
+> {
+  if (syncing) {
+    rerun = true;
+    return { status: "queued" };
+  }
+  syncing = true;
+  try {
+    let result: Awaited<ReturnType<typeof runSyncOnce>> = { status: "ok" };
+    do {
+      rerun = false;
+      result = await runSyncOnce(businessId, email);
+    } while (rerun && result.status === "ok");
+    return result;
+  } finally {
+    syncing = false;
+  }
+}
+
+async function runSyncOnce(
   businessId: string,
   email: string | null,
 ): Promise<
@@ -212,59 +245,43 @@ async function runSync(
   }
   publishSyncStatus({ phase: "syncing", lastSyncedAt: readSynced(), email });
   try {
-    const local = parseLedger(window.localStorage.getItem(LEDGER_KEY));
-    const shouldUpload = window.localStorage.getItem(MIGRATION_KEY) === "yes";
-    if (shouldUpload) {
-      const now = new Date().toISOString();
-      let queue = readQueue();
-      for (const entry of local) {
-        queue = queueChange(queue, {
-          table: "entries",
-          record: {
-            id: entry.id,
-            updatedAt: entry.updatedAt ?? entry.createdAt,
-            deletedAt: entry.deletedAt ?? null,
-          },
-        });
-      }
-      window.localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-      const rows = local.map((entry) => ({
-        id: entry.id,
-        business_id: businessId,
-        type: entry.type,
-        amount: Math.round(entry.amount),
-        currency: "UGX",
-        date: entry.date,
-        description: entry.description,
-        category: entry.category,
-        counterparty: entry.counterparty,
-        confidence: entry.confidence,
-        notes: entry.notes,
-        recorded_by: entry.recordedBy ?? null,
-        phone: entry.phone ?? null,
-        location: entry.location ?? null,
-        due_date: entry.dueDate ?? null,
-        agreed_amount: entry.agreedAmount ?? null,
-        source: entry.source,
-        is_sample: entry.isSample,
-        created_at: entry.createdAt,
-        updated_at: entry.updatedAt ?? now,
-        deleted_at: entry.deletedAt ?? null,
-      }));
-      const ready = rows.filter((row) => isCloudId(row.id) && entryWriteSchema.safeParse(row).success);
-      if (ready.length > 0) {
-        const { error } = await supabase.from("entries").upsert(ready);
-        if (error) throw error;
-      }
-      window.localStorage.setItem(QUEUE_KEY, "[]");
+    const local = syncRows(parseLedger(window.localStorage.getItem(LEDGER_KEY)));
+    let shadow = syncRows(readShadow());
+    if (shadow.length === 0 && window.localStorage.getItem(MIGRATION_KEY) === "no") {
+      shadow = local;
+      writeShadow(local);
     }
-    const { data, error } = await supabase.from("entries").select("id,updated_at,deleted_at").eq("business_id", businessId);
+    const forcePush = window.localStorage.getItem(FORCE_KEY) === "1";
+    const clearRemote = Boolean(window.localStorage.getItem(CLEAR_SYNC_KEY));
+    const now = new Date().toISOString();
+    const leading = syncPlan({ shadow, local, remote: [], now, forcePush });
+    await upsertEntries(supabase, businessId, leading.push);
+    const { data, error } = await supabase
+      .from("entries")
+      .select(
+        "id,type,amount,currency,date,description,category,counterparty,confidence,notes,recorded_by,phone,location,due_date,agreed_amount,source,is_sample,created_at,updated_at,deleted_at",
+      )
+      .eq("business_id", businessId);
     if (error) throw error;
-    const remoteIds = new Set((data ?? []).filter((row) => !row.deleted_at).map((row) => row.id as string));
-    if (window.localStorage.getItem(MIGRATION_KEY) === "yes") {
-      const kept = local.filter((entry) => remoteIds.has(entry.id) || !entry.deletedAt);
-      saveLedger(kept);
+    const remote = (data ?? []).map(fromRemote).filter((entry): entry is LedgerEntry => Boolean(entry));
+    const fresh = syncRows(parseLedger(window.localStorage.getItem(LEDGER_KEY)));
+    const planned = syncPlan({ shadow, local: fresh, remote: syncRows(remote), now, forcePush, clearRemote });
+    const already = new Set(leading.push.map((row) => `${row.id}:${row.updatedAt}:${row.deletedAt ?? ""}`));
+    await upsertEntries(
+      supabase,
+      businessId,
+      planned.push.filter((row) => !already.has(`${row.id}:${row.updatedAt}:${row.deletedAt ?? ""}`)),
+    );
+    const afterPush = JSON.stringify(syncRows(parseLedger(window.localStorage.getItem(LEDGER_KEY))));
+    if (afterPush !== JSON.stringify(fresh)) {
+      rerun = true;
+      return { status: "ok" };
     }
+    writeLedger(planned.merged);
+    writeShadow(planned.merged);
+    window.localStorage.removeItem(FORCE_KEY);
+    if (clearRemote) window.localStorage.removeItem(CLEAR_SYNC_KEY);
+    window.localStorage.removeItem(QUEUE_KEY);
     const synced = new Date().toISOString();
     window.localStorage.setItem(SYNCED_KEY, synced);
     publishSyncStatus({ phase: "backed-up", lastSyncedAt: synced, email });
@@ -276,15 +293,102 @@ async function runSync(
   }
 }
 
-function readSynced() {
-  return window.localStorage.getItem(SYNCED_KEY);
+async function upsertEntries(
+  supabase: NonNullable<ReturnType<typeof createBrowserSupabase>>,
+  businessId: string,
+  rows: Array<LedgerEntry & { updatedAt: string; deletedAt: string | null }>,
+) {
+  const ready = rows
+    .filter((row) => isCloudId(row.id))
+    .map((entry) => ({
+      id: entry.id,
+      business_id: businessId,
+      type: entry.type,
+      amount: Math.round(entry.amount),
+      currency: "UGX",
+      date: entry.date,
+      description: entry.description,
+      category: entry.category,
+      counterparty: entry.counterparty,
+      confidence: entry.confidence,
+      notes: entry.notes,
+      recorded_by: entry.recordedBy ?? null,
+      phone: entry.phone ?? null,
+      location: entry.location ?? null,
+      due_date: entry.dueDate ?? null,
+      agreed_amount: entry.agreedAmount ?? null,
+      source: entry.source,
+      is_sample: entry.isSample,
+      created_at: entry.createdAt,
+      updated_at: entry.updatedAt,
+      deleted_at: entry.deletedAt,
+    }))
+    .filter((row) => entryWriteSchema.safeParse(row).success);
+  if (ready.length === 0) return;
+  const { error } = await supabase.from("entries").upsert(ready);
+  if (error) throw error;
 }
 
-function readQueue(): QueuedChange<SyncRecord>[] {
+function fromRemote(row: Record<string, unknown>): LedgerEntry | null {
+  const source = row.source === "ai" || row.source === "sample" ? row.source : "demo";
+  const [entry] = parseLedger(
+    JSON.stringify([
+      {
+        id: row.id,
+        type: row.type,
+        amount: Number(row.amount),
+        currency: "UGX",
+        date: String(row.date ?? "").slice(0, 10),
+        description: row.description ?? "Transaction",
+        category: row.category ?? "Other",
+        counterparty: row.counterparty ?? null,
+        confidence: Number(row.confidence ?? 1),
+        notes: row.notes ?? null,
+        recordedBy: row.recorded_by ?? null,
+        phone: row.phone ?? null,
+        location: row.location ?? null,
+        dueDate: row.due_date ? String(row.due_date).slice(0, 10) : null,
+        agreedAmount: row.agreed_amount == null ? null : Number(row.agreed_amount),
+        source,
+        isSample: Boolean(row.is_sample),
+        createdAt: row.created_at ?? row.updated_at ?? new Date().toISOString(),
+        updatedAt: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+        deletedAt: row.deleted_at,
+      },
+    ]),
+  );
+  return entry ?? null;
+}
+
+function syncRows(entries: LedgerEntry[]) {
+  return entries.map((entry) => ({
+    ...entry,
+    updatedAt: entry.updatedAt || entry.createdAt,
+    deletedAt: entry.deletedAt ?? null,
+  }));
+}
+
+function readShadow(): LedgerEntry[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(QUEUE_KEY) ?? "[]") as QueuedChange<SyncRecord>[];
-    return Array.isArray(parsed) ? parsed : [];
+    return parseLedger(window.localStorage.getItem(SHADOW_KEY));
   } catch {
     return [];
   }
+}
+
+function writeShadow(entries: LedgerEntry[]) {
+  window.localStorage.setItem(SHADOW_KEY, JSON.stringify(entries));
+}
+
+function writeLedger(entries: LedgerEntry[]) {
+  applyingRemote = true;
+  try {
+    saveLedger(entries);
+  } finally {
+    applyingRemote = false;
+  }
+}
+
+function readSynced() {
+  return window.localStorage.getItem(SYNCED_KEY);
 }
