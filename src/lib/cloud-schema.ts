@@ -22,6 +22,7 @@ export const entryWriteSchema = z.object({
   due_date: isoDate.nullable(),
   agreed_amount: z.number().int().positive().nullable(),
   payment_method: z.enum(["cash", "mobile_money"]).nullable().optional(),
+  unit_price: z.number().int().positive().nullable().optional(),
   source: z.enum(["ai", "demo", "sample"]),
   is_sample: z.boolean(),
   created_at: timestamp,

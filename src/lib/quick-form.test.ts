@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseLedger } from "./storage";
 import { entryWriteSchema } from "./cloud-schema";
-import { amountFromGrouped, groupDigits, quickFieldErrors, quickFormEntry, type QuickDraftInput } from "./quick-form";
+import { amountFromGrouped, groupDigits, lineTotal, priceLine, quickFieldErrors, quickFormEntry, type QuickDraftInput } from "./quick-form";
 
 const staff = ["Owner", "Amina"];
 
@@ -11,6 +11,7 @@ function input(partial: Partial<QuickDraftInput> = {}): QuickDraftInput {
     item: "sugar",
     quantity: 3,
     amount: 15000,
+    unitPrice: 5000,
     paymentMethod: "cash",
     recordedBy: "Amina",
     name: "",
@@ -32,6 +33,15 @@ describe("quick form", () => {
     expect(amountFromGrouped("")).toBe(0);
   });
 
+  it("multiplies quantity by unit price and keeps a total that was edited last", () => {
+    expect(lineTotal(3, 5000)).toBe(15000);
+    expect(priceLine(3, 5000, 15000)).toBe("3 × 5,000 = 15,000");
+    expect(priceLine(3, 5000, 14000)).toBe("3 × 5,000 = 15,000. Total kept at 14,000 because that was edited last.");
+    const entry = quickFormEntry(input({ unitPrice: 5000, amount: 14000 }));
+    expect(entry).toMatchObject({ amount: 14000, unitPrice: 5000 });
+    expect(quickFormEntry(input({ type: "expense", unitPrice: 5000, item: "airtime" }))?.unitPrice).toBeNull();
+  });
+
   it("builds a sale without calling for AI", () => {
     const entry = quickFormEntry(input());
     expect(entry).toMatchObject({
@@ -39,6 +49,7 @@ describe("quick form", () => {
       amount: 15000,
       description: "3 sugar",
       paymentMethod: "cash",
+      unitPrice: 5000,
       recordedBy: "Amina",
       confidence: 1,
       date: "2026-11-24",
@@ -111,6 +122,7 @@ describe("quick form", () => {
       ]),
     );
     expect(loaded?.paymentMethod).toBeNull();
+    expect(loaded?.unitPrice).toBeNull();
     const parsed = entryWriteSchema.parse({
       id: "8d8b6c1e-4b1a-4e2a-9c1a-0b1c2d3e4f50",
       business_id: "8d8b6c1e-4b1a-4e2a-9c1a-0b1c2d3e4f51",
@@ -129,6 +141,7 @@ describe("quick form", () => {
       due_date: null,
       agreed_amount: null,
       payment_method: "mobile_money",
+      unit_price: 5000,
       source: "demo",
       is_sample: false,
       created_at: "2026-11-24T08:00:00.000Z",
@@ -136,6 +149,8 @@ describe("quick form", () => {
       deleted_at: null,
     });
     expect(parsed.payment_method).toBe("mobile_money");
+    expect(parsed.unit_price).toBe(5000);
     expect(entryWriteSchema.safeParse({ ...parsed, payment_method: "card" }).success).toBe(false);
+    expect(entryWriteSchema.safeParse({ ...parsed, unit_price: 0 }).success).toBe(false);
   });
 });

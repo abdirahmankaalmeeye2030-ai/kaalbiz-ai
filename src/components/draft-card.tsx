@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatUgx } from "@/lib/money";
 import { TYPE_LABELS } from "@/lib/labels";
-import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "@/lib/quick-form";
+import { PAYMENT_METHOD_LABELS, groupDigits, reviewPriceNote, type PaymentMethod } from "@/lib/quick-form";
 import { confirmFieldErrors, normalizeUgandaPhone, suggestContact, type Contact } from "@/lib/people";
 import { LOW_CONFIDENCE_THRESHOLD, TRANSACTION_TYPES, type DraftTransaction } from "@/lib/types";
 
@@ -109,6 +109,22 @@ export function DraftCard({
                 </option>
               ))}
             </select>
+          </div>
+        ) : null}
+        {draft.unitPrice ? (
+          <div>
+            <Label htmlFor={`${draft.draftId}-unit`}>Unit price (UGX)</Label>
+            <Input
+              id={`${draft.draftId}-unit`}
+              className="mt-1"
+              inputMode="numeric"
+              value={groupDigits(String(draft.unitPrice))}
+              onChange={(event) => {
+                const digits = event.target.value.replace(/[^\d]/g, "");
+                onChange({ ...draft, unitPrice: digits ? Number(digits) : null });
+              }}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">{reviewPriceNote(draft.unitPrice, draft.amount)}</p>
           </div>
         ) : null}
         <div className="grid grid-cols-2 gap-3">

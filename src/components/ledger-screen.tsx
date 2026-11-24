@@ -308,6 +308,9 @@ function LedgerTable({
                 <td className="border border-border px-3 py-2 whitespace-nowrap">{ledgerTypeLabel(entry.type)}</td>
                 <td className="border border-border px-3 py-2">
                   <span className="font-semibold">{entry.description}</span>
+                  {entry.unitPrice ? (
+                    <span className="mt-1 block text-xs text-muted-foreground">Unit price {formatUgx(entry.unitPrice)}</span>
+                  ) : null}
                   {entry.isSample ? (
                     <Badge variant="sample" className="ml-2 align-middle">
                       Sample

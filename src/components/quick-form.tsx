@@ -9,6 +9,8 @@ import {
   PAYMENT_METHOD_LABELS,
   QUICK_TYPES,
   QUICK_TYPE_LABELS,
+  lineTotal,
+  priceLine,
   amountFromGrouped,
   groupDigits,
   quickFieldErrors,
@@ -38,6 +40,8 @@ export function QuickForm({
   const [item, setItem] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [amount, setAmount] = useState(0);
+  const [unitPrice, setUnitPrice] = useState(0);
+  const [priceDriver, setPriceDriver] = useState<"unit" | "total">("unit");
   const [agreed, setAgreed] = useState(0);
   const [agreedEdited, setAgreedEdited] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
@@ -55,18 +59,41 @@ export function QuickForm({
   const kind = type === "supplier_debt" || payingSupplier ? "supplier" : "customer";
   const namedContacts = contacts.filter((contact) => contact.kind === kind);
   const debts = payingCustomer ? customerDebts(entries, today) : payingSupplier ? supplierDebts(entries, today) : [];
+  const quantityNumber = Number(quantity.replace(/\D/g, "")) || 0;
+  const hasQuantity = type === "sale" || type === "purchase";
 
-  function changeAmount(next: number) {
+  function applyTotal(next: number, edited: "unit" | "total") {
     setAmount(next);
     if (!agreedEdited) setAgreed(next);
+    setPriceDriver(edited);
+  }
+
+  function onUnitPrice(next: number) {
+    setUnitPrice(next);
+    const total = lineTotal(quantityNumber, next);
+    if (total) applyTotal(total, "unit");
+    else setPriceDriver("unit");
+  }
+
+  function onQuantity(raw: string) {
+    setQuantity(raw);
+    const qty = Number(raw.replace(/\D/g, "")) || 0;
+    if (priceDriver === "total") return;
+    const total = lineTotal(qty, unitPrice);
+    if (total) applyTotal(total, "unit");
+  }
+
+  function onTotal(next: number) {
+    applyTotal(next, "total");
   }
 
   function review() {
     const draft = {
       type,
       item,
-      quantity: Number(quantity.replace(/\D/g, "")) || 0,
+      quantity: quantityNumber,
       amount,
+      unitPrice,
       paymentMethod,
       recordedBy: recordedBy || lastUsed,
       name,
@@ -131,7 +158,17 @@ export function QuickForm({
             aria-label="Quantity"
             inputMode="numeric"
             value={quantity}
-            onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ""))}
+            onChange={(event) => onQuantity(event.target.value.replace(/\D/g, ""))}
+          />
+        </Field>
+      ) : null}
+      {hasQuantity ? (
+        <Field label="Unit price (UGX)">
+          <Input
+            aria-label="Unit price (UGX)"
+            inputMode="numeric"
+            value={unitPrice ? groupDigits(String(unitPrice)) : ""}
+            onChange={(event) => onUnitPrice(amountFromGrouped(event.target.value))}
           />
         </Field>
       ) : null}
@@ -150,7 +187,7 @@ export function QuickForm({
               onChange={(event) => {
                 const picked = debts.find((debt) => debt.name === event.target.value);
                 setName(picked?.name ?? "");
-                if (picked) changeAmount(picked.balance);
+                if (picked) onTotal(picked.balance);
               }}
             >
               <option value="">Choose a person</option>
@@ -169,8 +206,11 @@ export function QuickForm({
           aria-label="Amount (UGX)"
           inputMode="numeric"
           value={amount ? groupDigits(String(amount)) : ""}
-          onChange={(event) => changeAmount(amountFromGrouped(event.target.value))}
+          onChange={(event) => onTotal(amountFromGrouped(event.target.value))}
         />
+        {hasQuantity && priceLine(quantityNumber, unitPrice, amount) ? (
+          <p className="mt-1 text-xs text-muted-foreground">{priceLine(quantityNumber, unitPrice, amount)}</p>
+        ) : null}
       </Field>
 
       {type === "sale" ? (

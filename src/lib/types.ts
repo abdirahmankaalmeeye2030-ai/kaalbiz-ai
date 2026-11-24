@@ -32,6 +32,7 @@ export interface ExtractedTransaction {
   dueDate?: string | null;
   agreedAmount?: number | null;
   paymentMethod?: PaymentMethod | null;
+  unitPrice?: number | null;
   isSample?: boolean;
 }
 
@@ -57,6 +58,7 @@ export interface LedgerEntry {
   dueDate?: string | null;
   agreedAmount?: number | null;
   paymentMethod?: PaymentMethod | null;
+  unitPrice?: number | null;
   source: "ai" | "demo" | "sample";
   isSample: boolean;
   createdAt: string;

@@ -98,6 +98,7 @@ function toEntry(draft: DraftTransaction): LedgerEntry {
     dueDate: draft.dueDate || null,
     agreedAmount: draft.agreedAmount && draft.agreedAmount > 0 ? Math.round(draft.agreedAmount) : null,
     paymentMethod: draft.paymentMethod ?? null,
+    unitPrice: draft.unitPrice && draft.unitPrice > 0 ? Math.round(draft.unitPrice) : null,
     confidence: draft.confidence,
     notes: draft.notes,
     source: draft.origin,

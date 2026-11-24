@@ -61,11 +61,44 @@ export function amountFromGrouped(raw: string): number {
   return Math.round(value);
 }
 
+export function lineTotal(quantity: number, unitPrice: number): number {
+  const qty = Math.round(quantity);
+  const price = Math.round(unitPrice);
+  if (!(qty > 0) || !(price > 0)) return 0;
+  const total = qty * price;
+  if (!Number.isFinite(total) || total <= 0 || total > 2_000_000_000) return 0;
+  return total;
+}
+
+export function priceLine(quantity: number, unitPrice: number, amount: number): string | null {
+  const computed = lineTotal(quantity, unitPrice);
+  if (!computed) return null;
+  const formula = `${Math.round(quantity)} × ${groupDigits(String(Math.round(unitPrice)))} = ${groupDigits(String(computed))}`;
+  if (computed === Math.round(amount)) return formula;
+  return `${formula}. Total kept at ${groupDigits(String(Math.round(amount)))} because that was edited last.`;
+}
+
+export function reviewPriceNote(unitPrice: number, amount: number): string {
+  const price = Math.round(unitPrice);
+  const total = Math.round(amount);
+  if (!(price > 0)) return "";
+  if (total > 0 && total % price === 0) {
+    return priceLine(total / price, price, total) ?? `Unit price ${groupDigits(String(price))}`;
+  }
+  return `Unit price ${groupDigits(String(price))}. Total is ${groupDigits(String(total))}.`;
+}
+
+export function parseUnitPrice(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 2_000_000_000) return null;
+  return Math.round(value);
+}
+
 export interface QuickDraftInput {
   type: QuickType;
   item: string;
   quantity: number;
   amount: number;
+  unitPrice: number;
   paymentMethod: PaymentMethod | null;
   recordedBy: string;
   name: string;
@@ -134,5 +167,6 @@ export function quickFormEntry(input: QuickDraftInput): ExtractedTransaction | n
     dueDate: credit ? input.dueDate : null,
     agreedAmount: credit ? Math.round(input.agreedAmount) : null,
     paymentMethod: input.type === "sale" ? input.paymentMethod : null,
+    unitPrice: input.type === "sale" || input.type === "purchase" ? parseUnitPrice(input.unitPrice) : null,
   };
 }

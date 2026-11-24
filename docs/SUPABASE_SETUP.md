@@ -86,3 +86,14 @@ The round picture at the bottom left is stored on the phone only. KaalBiz does n
 ## Payment method column
 
 Quick form sales can store Cash or Mobile money. Paste and run `supabase/migrations/20261125010000_payment_method.sql` before those sales sync. Older rows stay blank. Records without a payment method still sync if this column is missing.
+
+## Unit price column
+
+Quick form sales and stock can store a unit price. Paste and run these two lines:
+
+```sql
+alter table public.entries add column if not exists unit_price bigint check (unit_price is null or unit_price > 0);
+notify pgrst, 'reload schema';
+```
+
+Rows without a unit price stay blank, and they still sync if this column is missing.
