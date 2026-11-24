@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { isCloudConfigured } from "@/lib/cloud-config";
 import { useLedger } from "@/lib/use-ledger";
 
 export function DataActions({ compact = false }: { compact?: boolean }) {
@@ -38,13 +39,21 @@ export function DataActions({ compact = false }: { compact?: boolean }) {
       <ConfirmDialog
         open={open}
         title="Clear all records?"
-        body="This removes every sale, cost, and sample from this phone. It cannot be undone."
+        body={
+          isCloudConfigured()
+            ? "This removes every sale, cost, and sample from this phone and from your cloud backup. It cannot be undone."
+            : "This removes every sale, cost, and sample from this phone. It cannot be undone."
+        }
         confirmLabel="Clear all"
         destructive
         onOpenChange={setOpen}
         onConfirm={() => {
           clear();
-          setNote("All records were cleared from this phone.");
+          setNote(
+            isCloudConfigured()
+              ? "All records were cleared. Cloud backup will remove them too."
+              : "All records were cleared from this phone.",
+          );
         }}
       />
     </div>

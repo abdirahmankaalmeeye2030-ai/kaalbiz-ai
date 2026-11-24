@@ -42,6 +42,8 @@ export function parseLedger(raw: string | null): LedgerEntry[] {
       dueDate: typeof entry.dueDate === "string" && entry.dueDate.trim() ? entry.dueDate.trim() : null,
       agreedAmount:
         typeof entry.agreedAmount === "number" && entry.agreedAmount > 0 ? Math.round(entry.agreedAmount) : null,
+      updatedAt: typeof entry.updatedAt === "string" && entry.updatedAt.trim() ? entry.updatedAt : entry.createdAt,
+      deletedAt: typeof entry.deletedAt === "string" && entry.deletedAt.trim() ? entry.deletedAt : null,
     }));
   } catch {
     return [];
@@ -54,7 +56,9 @@ export function loadLedger(): LedgerEntry[] {
 }
 
 export function saveLedger(entries: LedgerEntry[]): void {
-  window.localStorage.setItem(LEDGER_KEY, JSON.stringify(entries));
+  const next = JSON.stringify(entries);
+  if (window.localStorage.getItem(LEDGER_KEY) === next) return;
+  window.localStorage.setItem(LEDGER_KEY, next);
   window.dispatchEvent(new Event(LEDGER_EVENT));
 }
 

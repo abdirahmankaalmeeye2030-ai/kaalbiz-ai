@@ -18,6 +18,7 @@ import {
   ledgerToXlsx,
   ledgerTypeLabel,
 } from "@/lib/ledger-sheet";
+import { isCloudConfigured } from "@/lib/cloud-config";
 import { formatUgx } from "@/lib/money";
 import { useStaff } from "@/lib/use-people";
 import { useLedger } from "@/lib/use-ledger";
@@ -211,7 +212,7 @@ export function LedgerScreen() {
         title="Remove this record?"
         body={
           deleting
-            ? `${deleting.description} (${formatUgx(deleting.amount)}) will be deleted from this phone.`
+            ? `${deleting.description} (${formatUgx(deleting.amount)}) will be removed from this phone${isCloudConfigured() ? " and from your cloud backup" : ""}.`
             : "This deletes it from this phone."
         }
         confirmLabel="Remove"

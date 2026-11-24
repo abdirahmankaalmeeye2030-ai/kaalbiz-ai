@@ -9,6 +9,7 @@ import {
   saveLedger,
   withDemoData,
 } from "./storage";
+import { activeRecords } from "./sync";
 import type { LedgerEntry } from "./types";
 
 function subscribe(onStoreChange: () => void) {
@@ -30,18 +31,34 @@ function getServerSnapshot() {
 
 export function useLedger() {
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const entries = useMemo(() => parseLedger(raw), [raw]);
+  const entries = useMemo(() => activeRecords(parseLedger(raw).map(asSyncRow)), [raw]);
 
   const add = useCallback((incoming: LedgerEntry[]) => {
-    saveLedger([...parseLedger(getSnapshot()), ...incoming]);
+    const now = new Date().toISOString();
+    const stamped = incoming.map((entry) => ({
+      ...entry,
+      updatedAt: entry.updatedAt || now,
+      deletedAt: entry.deletedAt ?? null,
+    }));
+    saveLedger([...parseLedger(getSnapshot()), ...stamped]);
   }, []);
 
   const remove = useCallback((id: string) => {
-    saveLedger(parseLedger(getSnapshot()).filter((entry) => entry.id !== id));
+    const now = new Date().toISOString();
+    saveLedger(
+      parseLedger(getSnapshot()).map((entry) =>
+        entry.id === id ? { ...entry, updatedAt: now, deletedAt: now } : entry,
+      ),
+    );
   }, []);
 
   const update = useCallback((id: string, patch: Partial<LedgerEntry>) => {
-    saveLedger(parseLedger(getSnapshot()).map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+    const now = new Date().toISOString();
+    saveLedger(
+      parseLedger(getSnapshot()).map((entry) =>
+        entry.id === id ? { ...entry, ...patch, updatedAt: patch.updatedAt ?? now } : entry,
+      ),
+    );
   }, []);
 
   const loadDemo = useCallback(() => {
@@ -51,8 +68,18 @@ export function useLedger() {
   }, []);
 
   const clear = useCallback(() => {
-    saveLedger([]);
+    const now = new Date().toISOString();
+    saveLedger(
+      parseLedger(getSnapshot()).map((entry) => (entry.deletedAt ? entry : { ...entry, updatedAt: now, deletedAt: now })),
+    );
+    window.localStorage.setItem(CLEAR_SYNC_KEY, now);
   }, []);
 
   return { entries, ready: true, add, remove, update, loadDemo, clear };
+}
+
+export const CLEAR_SYNC_KEY = "kaalbiz.sync.clear";
+
+function asSyncRow(entry: LedgerEntry) {
+  return { ...entry, updatedAt: entry.updatedAt || entry.createdAt, deletedAt: entry.deletedAt ?? null };
 }
