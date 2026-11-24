@@ -82,3 +82,18 @@ The connected project URL is `https://fjllotlodzwjmfrkmjbx.supabase.co`. Do not 
 Login emails are limited to 5 tries each 10 minutes per address path on one server instance. Supabase has its own limit as well.
 
 The round picture at the bottom left is stored on the phone only. KaalBiz does not upload it to Supabase Storage.
+
+## Payment method column
+
+Quick form sales can store Cash or Mobile money. Paste and run `supabase/migrations/20261125010000_payment_method.sql` before those sales sync. Older rows stay blank. Records without a payment method still sync if this column is missing.
+
+## Unit price column
+
+Quick form sales and stock can store a unit price. Paste and run these two lines:
+
+```sql
+alter table public.entries add column if not exists unit_price bigint check (unit_price is null or unit_price > 0);
+notify pgrst, 'reload schema';
+```
+
+Rows without a unit price stay blank, and they still sync if this column is missing.

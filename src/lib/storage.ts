@@ -1,5 +1,6 @@
 import { buildDemoTransactions } from "./demo-data";
 import { TRANSACTION_TYPES, type LedgerEntry, type TransactionType } from "./types";
+import { parsePaymentMethod, parseUnitPrice } from "./quick-form";
 
 export const LEDGER_KEY = "kaalbiz.ledger.v1";
 export const LEDGER_EVENT = "kaalbiz:ledger";
@@ -42,6 +43,8 @@ export function parseLedger(raw: string | null): LedgerEntry[] {
       dueDate: typeof entry.dueDate === "string" && entry.dueDate.trim() ? entry.dueDate.trim() : null,
       agreedAmount:
         typeof entry.agreedAmount === "number" && entry.agreedAmount > 0 ? Math.round(entry.agreedAmount) : null,
+      paymentMethod: parsePaymentMethod(entry.paymentMethod),
+      unitPrice: parseUnitPrice(entry.unitPrice),
       updatedAt: typeof entry.updatedAt === "string" && entry.updatedAt.trim() ? entry.updatedAt : entry.createdAt,
       deletedAt: typeof entry.deletedAt === "string" && entry.deletedAt.trim() ? entry.deletedAt : null,
     }));

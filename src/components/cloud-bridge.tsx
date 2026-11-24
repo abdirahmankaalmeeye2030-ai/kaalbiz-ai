@@ -5,7 +5,7 @@ import { publishSyncStatus } from "@/components/account-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { entryWriteSchema } from "@/lib/cloud-schema";
-import { isCloudConfigured } from "@/lib/cloud-config";
+import { isCloudConfigured, isMissingSession } from "@/lib/cloud-config";
 import { LEDGER_EVENT, LEDGER_KEY, parseLedger, saveLedger } from "@/lib/storage";
 import { isPermissionDenied } from "@/lib/sync-status";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
@@ -30,12 +30,11 @@ export function CloudBridge() {
   const [backupNote, setBackupNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!cloud) {
+    const client = cloud ? createBrowserSupabase() : null;
+    if (!cloud || !client) {
       publishSyncStatus({ phase: "off", lastSyncedAt: null, email: null });
       return;
     }
-    const client = createBrowserSupabase();
-    if (!client) return;
 
     let stopped = false;
     let retryTimer = 0;
@@ -54,10 +53,11 @@ export function CloudBridge() {
       try {
         const { data, error: userError } = await client.auth.getUser();
         if (userError || !data.user) {
-          if (userError && navigator.onLine) {
+          if (userError && !isMissingSession(userError) && navigator.onLine) {
             noteFailure(userError, null);
             scheduleRetry();
           } else {
+            setBackupNote(null);
             publishSyncStatus({ phase: "signed-out", lastSyncedAt: null, email: null });
             setNeedShop(false);
           }
@@ -154,7 +154,7 @@ export function CloudBridge() {
 
   return (
     <>
-      {backupNote ? (
+      {cloud && backupNote ? (
         <div className="border-b border-border bg-card px-4 py-3">
           <p className="text-sm text-destructive">{backupNote}</p>
         </div>
@@ -256,14 +256,17 @@ async function runSyncOnce(
     const now = new Date().toISOString();
     const leading = syncPlan({ shadow, local, remote: [], now, forcePush });
     await upsertEntries(supabase, businessId, leading.push);
-    const { data, error } = await supabase
-      .from("entries")
-      .select(
-        "id,type,amount,currency,date,description,category,counterparty,confidence,notes,recorded_by,phone,location,due_date,agreed_amount,source,is_sample,created_at,updated_at,deleted_at",
-      )
-      .eq("business_id", businessId);
-    if (error) throw error;
-    const remote = (data ?? []).map(fromRemote).filter((entry): entry is LedgerEntry => Boolean(entry));
+    const columns =
+      "id,type,amount,currency,date,description,category,counterparty,confidence,notes,recorded_by,phone,location,due_date,agreed_amount,source,is_sample,created_at,updated_at,deleted_at";
+    const wide = await supabase.from("entries").select(`${columns},payment_method,unit_price`).eq("business_id", businessId);
+    const pulled =
+      wide.error && /payment_method|unit_price/i.test(wide.error.message ?? "")
+        ? await supabase.from("entries").select(columns).eq("business_id", businessId)
+        : wide;
+    if (pulled.error) throw pulled.error;
+    const remote = ((pulled.data ?? []) as Record<string, unknown>[])
+      .map(fromRemote)
+      .filter((entry): entry is LedgerEntry => Boolean(entry));
     const fresh = syncRows(parseLedger(window.localStorage.getItem(LEDGER_KEY)));
     const planned = syncPlan({ shadow, local: fresh, remote: syncRows(remote), now, forcePush, clearRemote });
     const already = new Set(leading.push.map((row) => `${row.id}:${row.updatedAt}:${row.deletedAt ?? ""}`));
@@ -317,6 +320,8 @@ async function upsertEntries(
       location: entry.location ?? null,
       due_date: entry.dueDate ?? null,
       agreed_amount: entry.agreedAmount ?? null,
+      ...(entry.paymentMethod ? { payment_method: entry.paymentMethod } : {}),
+      ...(entry.unitPrice ? { unit_price: Math.round(entry.unitPrice) } : {}),
       source: entry.source,
       is_sample: entry.isSample,
       created_at: entry.createdAt,
@@ -325,7 +330,17 @@ async function upsertEntries(
     }))
     .filter((row) => entryWriteSchema.safeParse(row).success);
   if (ready.length === 0) return;
-  const { error } = await supabase.from("entries").upsert(ready);
+  let { error } = await supabase.from("entries").upsert(ready);
+  if (error && /payment_method|unit_price/i.test(error.message ?? "")) {
+    const stripped = ready.map((row) => {
+      const { payment_method: _payment, unit_price: _price, ...rest } = row;
+      void _payment;
+      void _price;
+      return rest;
+    });
+    const retry = await supabase.from("entries").upsert(stripped);
+    error = retry.error;
+  }
   if (error) throw error;
 }
 
@@ -349,6 +364,8 @@ function fromRemote(row: Record<string, unknown>): LedgerEntry | null {
         location: row.location ?? null,
         dueDate: row.due_date ? String(row.due_date).slice(0, 10) : null,
         agreedAmount: row.agreed_amount == null ? null : Number(row.agreed_amount),
+        paymentMethod: row.payment_method ?? null,
+        unitPrice: row.unit_price == null ? null : Number(row.unit_price),
         source,
         isSample: Boolean(row.is_sample),
         createdAt: row.created_at ?? row.updated_at ?? new Date().toISOString(),
