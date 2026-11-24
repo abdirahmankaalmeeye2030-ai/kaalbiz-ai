@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { entryWriteSchema, magicLinkSchema } from "./cloud-schema";
-import { activeRecords, applyRemote, changesToPush, isCloudId, mergeRecords, migrateLocalRows, queueChange, type SyncRecord } from "./sync";
+import { activeRecords, applyRemote, changesToPush, isCloudId, mergeRecords, migrateLocalRows, queueChange, syncPlan, type SyncRecord } from "./sync";
 
 interface Row extends SyncRecord {
   name: string;
@@ -48,6 +48,65 @@ describe("sync merge and queue", () => {
 
     const applied = applyRemote(shadow, [row("a", "from cloud", "2026-11-24T15:00:00.000Z")], [], "entries");
     expect(activeRecords(applied).find((item) => item.id === "a")?.name).toBe("from cloud");
+  });
+
+  it("does not resurrect a deleted sale when the cloud still has the old copy", () => {
+    const sale = row("sale", "Sale", "2026-11-24T10:00:00.000Z");
+    const debt = row("debt", "Money owed to me", "2026-11-24T10:00:00.000Z");
+    const first = syncPlan({
+      shadow: [sale, debt],
+      local: [debt],
+      remote: [sale, debt],
+      now: "2026-11-24T12:00:00.000Z",
+    });
+    expect(first.push.find((item) => item.id === "sale")?.deletedAt).toBe("2026-11-24T12:00:00.000Z");
+    expect(activeRecords(first.merged).map((item) => item.id)).toEqual(["debt"]);
+
+    const cloudStillStale = [sale, debt];
+    const second = syncPlan({
+      shadow: first.merged,
+      local: first.merged,
+      remote: cloudStillStale,
+      now: "2026-11-24T12:00:01.000Z",
+    });
+    expect(second.push).toEqual([]);
+    expect(activeRecords(second.merged).map((item) => item.id)).toEqual(["debt"]);
+  });
+
+  it("keeps a new local row and pushes it before an older cloud list can replace it", () => {
+    const sale = row("sale", "Sale", "2026-11-24T10:00:00.000Z");
+    const created = row("new", "New sale", "2026-11-24T10:00:00.000Z");
+    const planned = syncPlan({
+      shadow: [sale],
+      local: [sale, created],
+      remote: [sale],
+      now: "2026-11-24T12:00:00.000Z",
+    });
+    expect(planned.push.map((item) => item.id)).toEqual(["new"]);
+    expect(activeRecords(planned.merged).map((item) => item.id).sort()).toEqual(["new", "sale"]);
+  });
+
+  it("clear all tombstones the phone and the older cloud copies", () => {
+    const sale = row("sale", "Sale", "2026-11-24T10:00:00.000Z");
+    const debt = row("debt", "Money owed to me", "2026-11-24T09:00:00.000Z");
+    const planned = syncPlan({
+      shadow: [sale],
+      local: [{ ...sale, updatedAt: "2026-11-24T12:00:00.000Z", deletedAt: "2026-11-24T12:00:00.000Z" }],
+      remote: [sale, debt],
+      now: "2026-11-24T12:00:00.000Z",
+      clearRemote: true,
+    });
+    expect(activeRecords(planned.merged)).toEqual([]);
+    expect(planned.push.map((item) => item.id).sort()).toEqual(["debt", "sale"]);
+    expect(planned.push.every((item) => item.deletedAt === "2026-11-24T12:00:00.000Z")).toBe(true);
+  });
+
+  it("compares instants, so an offset clock cannot look older than it is", () => {
+    const merged = mergeRecords(
+      [row("a", "local", "2026-11-24T14:00:00.000Z")],
+      [row("a", "remote", "2026-11-24T12:00:00-03:00")],
+    );
+    expect(merged.find((item) => item.id === "a")?.name).toBe("remote");
   });
 });
 

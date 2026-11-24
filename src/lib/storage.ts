@@ -58,7 +58,9 @@ export function loadLedger(): LedgerEntry[] {
 }
 
 export function saveLedger(entries: LedgerEntry[]): void {
-  window.localStorage.setItem(LEDGER_KEY, JSON.stringify(entries));
+  const next = JSON.stringify(entries);
+  if (window.localStorage.getItem(LEDGER_KEY) === next) return;
+  window.localStorage.setItem(LEDGER_KEY, next);
   window.dispatchEvent(new Event(LEDGER_EVENT));
 }
 
